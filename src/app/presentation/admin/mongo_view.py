@@ -1,7 +1,7 @@
-from operator import attrgetter
 from typing import Any
 
 from adaptix import Retort
+from bson import ObjectId
 from starlette.requests import Request
 from starlette_admin import (
     BaseModelView,
@@ -14,8 +14,10 @@ from starlette_admin import (
 from app.application.change_tracker import ChangeTracker
 from app.application.user_repo import UserRepository
 from app.domain.model import User
+from app.infrastructure.db.query_builder import build_mongo_filter
 
 
+# по-хорошему в методах нужно дергать интеракторы, но мне лень (пока что)
 class MongoUserView(BaseModelView):
     """Кастомная админка для MongoDB User"""
 
@@ -55,34 +57,56 @@ class MongoUserView(BaseModelView):
             where: dict[str, Any] | str | None = None,
             order_by: list[str] | None = None,
     ) -> list[Any]:
-        """Получение списка пользователей"""
+        """Получение списка пользователей с фильтрацией и сортировкой"""
         container = request.state.dishka_container
 
         async with container() as req_container:
             repository = await req_container.get(UserRepository)
 
-            users = await repository.get_all()
+            # Преобразуем where в MongoDB filter
+            mongo_filter = build_mongo_filter(where)
 
-            if order_by is not None:
-                for item in reversed(order_by):
+            # Преобразуем order_by в MongoDB sort
+            sort = None
+            if order_by:
+                sort = []
+                for item in order_by:
                     key, direction = item.split(maxsplit=1)
-                    users.sort(key=attrgetter(key), reverse=(direction == "desc"))
+                    # MongoDB: 1 для ascending, -1 для descending
+                    sort.append((key, -1 if direction.lower() == "desc" else 1))
 
-            if limit > 0:
-                return users[skip:skip + limit]
-            return users[skip:]
+            # Получаем данные через repository
+            users = await repository.get_all(
+                filter_query=mongo_filter,
+                skip=skip,
+                limit=limit if limit > 0 else 0,
+                sort=sort,
+            )
+
+            return users
 
     async def count(
             self,
             request: Request,
             where: dict[str, Any] | str | None = None,
     ) -> int:
-        """Подсчет количества документов"""
+        """Подсчет количества документов с учётом фильтра"""
         container = request.state.dishka_container
 
         async with container() as req_container:
             repository = await req_container.get(UserRepository)
-            users = await repository.get_all()
+
+            # Преобразуем where в MongoDB filter
+            mongo_filter = build_mongo_filter(where)
+
+            # Получаем все данные с фильтром (без пагинации)
+            users = await repository.get_all(
+                filter_query=mongo_filter,
+                skip=0,
+                limit=0,  # 0 = без лимита
+                sort=None,
+            )
+
             return len(users)
 
     async def find_by_pk(self, request: Request, pk: Any) -> Any:
@@ -100,11 +124,22 @@ class MongoUserView(BaseModelView):
         async with container() as req_container:
             repository = await req_container.get(UserRepository)
 
-            users = []
+            object_ids = []
             for pk in pks:
-                user = await repository.get_by_id(str(pk))
-                if user:
-                    users.append(user)
+                try:
+                    object_ids.append(ObjectId(str(pk)))
+                except Exception:
+                    continue
+
+            if not object_ids:
+                return []
+
+            users = await repository.get_all(
+                filter_query={"_id": {"$in": object_ids}},
+                skip=0,
+                limit=0,
+                sort=None,
+            )
 
             return users
 

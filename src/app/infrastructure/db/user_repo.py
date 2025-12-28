@@ -39,14 +39,39 @@ class MongoUserRepository(UserRepository):
 
         return self.retort.load(user_doc, User)
 
-    async def get_all(self) -> list[User]:
-        cursor = self.collection.find({})
+    async def get_all(
+            self,
+            filter_query: dict[str, Any] | None = None,
+            skip: int = 0,
+            limit: int = 0,
+            sort: list[tuple[str, int]] | None = None,
+    ) -> list[User]:
+        """
+        Получить пользователей с фильтрацией, пагинацией и сортировкой
+
+        Args:
+            filter_query: MongoDB filter (например {"is_active": True})
+            skip: Количество документов для пропуска
+            limit: Максимальное количество документов (0 = без лимита)
+            sort: Список кортежей (field, direction), где direction: 1=asc, -1=desc
+        """
+        query = filter_query or {}
+
+        cursor = self.collection.find(query)
+
+        if sort:
+            cursor = cursor.sort(sort)
+
+        if skip > 0:
+            cursor = cursor.skip(skip)
+
+        if limit > 0:
+            cursor = cursor.limit(limit)
 
         user_docs = await cursor.to_list(length=None)
-
         users = self.retort.load(user_docs, list[User])
 
-        logger.info(f"Loaded {len(users)} users")
+        logger.info(f"Loaded {len(users)} users with filter: {query}")
         return users
 
     async def delete(self, user_id: str) -> None:
