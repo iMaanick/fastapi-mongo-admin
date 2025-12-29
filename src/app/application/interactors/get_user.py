@@ -17,14 +17,14 @@ class GetUserInteractor:
     user_repository: UserRepository
 
     async def __call__(self, request_data: GetUserRequest) -> User | None:
-        logger.info(f"Getting user by ID: {request_data.user_id}")
+        logger.info("Getting user by ID: %s", request_data.user_id)
 
         user = await self.user_repository.get_by_id(request_data.user_id)
 
         if user is None:
-            logger.info(f"User not found: {request_data.user_id}")
+            logger.info("User not found: %s", request_data.user_id)
             return None
 
-        logger.info(f"User found: {user.username}")
+        logger.info("User found: %s", user.username)
 
         return user

@@ -7,9 +7,9 @@ from bson import ObjectId
 from dishka import Provider, Scope, provide
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
+    AsyncIOMotorClientSession,
     AsyncIOMotorCollection,
     AsyncIOMotorDatabase,
-    AsyncIOMotorClientSession,
 )
 
 from app.application.change_tracker import ChangeTracker
@@ -28,7 +28,9 @@ class InfrastructureProvider(Provider):
         self,
         config: MongoDBConfig,
     ) -> AsyncIterator[AsyncIOMotorClient[dict[str, Any]]]:
-        client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(config.uri)
+        client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
+            config.uri,
+        )
         logger.debug("MongoDB client was initialized")
         yield client
         client.close()
@@ -41,7 +43,7 @@ class InfrastructureProvider(Provider):
         config: MongoDBConfig,
     ) -> AsyncIOMotorDatabase[dict[str, Any]]:
         database = client[config.db_name]
-        logger.debug(f"Database '{config.db_name}' was initialized")
+        logger.debug("Database '%s' was initialized", config.db_name)
         return database
 
     @provide
@@ -50,8 +52,7 @@ class InfrastructureProvider(Provider):
         database: AsyncIOMotorDatabase[dict[str, Any]],
         config: MongoDBConfig,
     ) -> AsyncIOMotorCollection[dict[str, Any]]:
-        collection = database[config.collection_name]
-        return collection
+        return database[config.collection_name]
 
     @provide(scope=Scope.REQUEST)
     async def get_session(
@@ -63,8 +64,9 @@ class InfrastructureProvider(Provider):
             async with session.start_transaction():
                 logger.debug("MongoDB transaction started")
                 yield session
-                if session.in_transaction:
-                    await session.abort_transaction()  # нужно чтобы не было автокоммита
+                if session.in_transaction:  # type: ignore[truthy-function]
+                    # нужно чтобы не было автокоммита
+                    await session.abort_transaction()
                 logger.debug("MongoDB transaction committed")
 
     @provide(scope=Scope.APP)

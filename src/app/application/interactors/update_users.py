@@ -33,6 +33,6 @@ class UpdateUsersInteractor:
         modified_count = await self.change_tracker.save()
         await self.change_tracker.commit()
 
-        logger.info(f"Modified {modified_count} users")
+        logger.info("Modified %s users", modified_count)
 
         return UpdateUsersResponse(modified_count=modified_count)

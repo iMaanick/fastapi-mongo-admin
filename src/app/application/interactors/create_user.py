@@ -26,9 +26,11 @@ class CreateUserInteractor:
     user_repository: UserRepository
     change_tracker: ChangeTracker
 
-
-    async def __call__(self, request_data: CreateUserRequest) -> CreateUserResponse:
-        logger.info(f"Creating user: {request_data.username}")
+    async def __call__(
+        self,
+        request_data: CreateUserRequest,
+    ) -> CreateUserResponse:
+        logger.info("Creating user: %s", request_data.username)
 
         user = User(
             username=request_data.username,
@@ -39,8 +41,7 @@ class CreateUserInteractor:
         await self.user_repository.add(user)
         await self.change_tracker.commit()
 
-
-        logger.info(f"User created: {user.username}")
+        logger.info("User created: %s", user.username)
 
         return CreateUserResponse(
             username=user.username,

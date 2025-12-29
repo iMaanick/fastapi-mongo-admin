@@ -27,13 +27,15 @@ class UpdateUserInteractor:
     change_tracker: ChangeTracker
 
     async def __call__(self, request_data: UpdateUserRequest) -> User:
-        logger.info(f"Updating user: {request_data.user_id}")
+        logger.info("Updating user: %s", request_data.user_id)
 
         user = await self.user_repository.get_by_id(request_data.user_id)
 
         if user is None:
-            logger.warning(f"User not found: {request_data.user_id}")
-            raise UserNotFoundError(f"User with ID {request_data.user_id} not found")
+            logger.warning("User not found: %s", request_data.user_id)
+            raise UserNotFoundError(
+                f"User with ID {request_data.user_id} not found",
+            )
 
         self.change_tracker.track(user)
 
@@ -52,5 +54,9 @@ class UpdateUserInteractor:
         modified_count = await self.change_tracker.save()
 
         await self.change_tracker.commit()
-        logger.info(f"User updated: {user.username}, modified_count={modified_count}")
+        logger.info(
+            "User updated: %s, modified_count=%s",
+            user.username,
+            modified_count,
+        )
         return user

@@ -1,9 +1,12 @@
+from collections.abc import Sequence
 from typing import Any
 
 from adaptix import Retort
 from bson import ObjectId
+from dishka import AsyncContainer
 from starlette.requests import Request
 from starlette_admin import (
+    BaseField,
     BaseModelView,
     BooleanField,
     CollectionField,
@@ -27,7 +30,7 @@ class MongoUserView(BaseModelView):
     icon = "fa fa-users"
     pk_attr = "_id"
 
-    fields = [
+    fields: Sequence[BaseField] = [
         StringField("_id", exclude_from_create=True, exclude_from_edit=True),
         StringField("username", required=True),
         StringField("email", required=True),
@@ -42,26 +45,28 @@ class MongoUserView(BaseModelView):
         ),
     ]
 
-    sortable_fields = ("_id", "username", "email", "is_active")
-    searchable_fields = ["username", "email"]
-    exclude_fields_from_list = ["unused_field"]
-    fields_default_sort = ["_id"]
-    page_size = 10
-    page_size_options = [10, 25, 50, -1]
+    sortable_fields: tuple[str] = ("_id", "username", "email", "is_active")
+    searchable_fields: Sequence[str] = ["username", "email"]
+    exclude_fields_from_list: Sequence[str] = ["unused_field"]
+    fields_default_sort: Sequence[str] = ["_id"]
+    page_size: int = 10
+    page_size_options: Sequence[int] = [10, 25, 50, -1]
 
     async def find_all(
-            self,
-            request: Request,
-            skip: int = 0,
-            limit: int = 100,
-            where: dict[str, Any] | str | None = None,
-            order_by: list[str] | None = None,
+        self,
+        request: Request,
+        skip: int = 0,
+        limit: int = 100,
+        where: dict[str, Any] | str | None = None,
+        order_by: list[str] | None = None,
     ) -> list[Any]:
         """Получение списка пользователей с фильтрацией и сортировкой"""
-        container = request.state.dishka_container
+        container: AsyncContainer = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
+            repository: UserRepository = await req_container.get(
+                UserRepository,
+            )
 
             # Преобразуем where в MongoDB filter
             mongo_filter = build_mongo_filter(where)
@@ -72,23 +77,21 @@ class MongoUserView(BaseModelView):
                 sort = []
                 for item in order_by:
                     key, direction = item.split(maxsplit=1)
-                    # MongoDB: 1 для ascending, -1 для descending
-                    sort.append((key, -1 if direction.lower() == "desc" else 1))
+                    sort_direction = -1 if direction.lower() == "desc" else 1
+                    sort.append((key, sort_direction))
 
             # Получаем данные через repository
-            users = await repository.get_all(
+            return await repository.get_all(
                 filter_query=mongo_filter,
                 skip=skip,
-                limit=limit if limit > 0 else 0,
+                limit=max(0, limit),
                 sort=sort,
             )
 
-            return users
-
     async def count(
-            self,
-            request: Request,
-            where: dict[str, Any] | str | None = None,
+        self,
+        request: Request,
+        where: dict[str, Any] | str | None = None,
     ) -> int:
         """Подсчет количества документов с учётом фильтра"""
         container = request.state.dishka_container
@@ -122,7 +125,9 @@ class MongoUserView(BaseModelView):
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
+            repository: UserRepository = await req_container.get(
+                UserRepository,
+            )
 
             object_ids = []
             for pk in pks:
@@ -134,14 +139,12 @@ class MongoUserView(BaseModelView):
             if not object_ids:
                 return []
 
-            users = await repository.get_all(
+            return await repository.get_all(
                 filter_query={"_id": {"$in": object_ids}},
                 skip=0,
                 limit=0,
                 sort=None,
             )
-
-            return users
 
     async def create(self, request: Request, data: dict[str, Any]) -> Any:
         """Создание пользователя"""
@@ -160,7 +163,12 @@ class MongoUserView(BaseModelView):
 
             return user
 
-    async def edit(self, request: Request, pk: Any, data: dict[str, Any]) -> Any:
+    async def edit(
+        self,
+        request: Request,
+        pk: Any,
+        data: dict[str, Any],
+    ) -> Any:
         """Редактирование пользователя через ChangeTracker"""
         container = request.state.dishka_container
 

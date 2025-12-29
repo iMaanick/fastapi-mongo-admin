@@ -28,6 +28,8 @@ lint.ignore = [
     "TC006",
     # only affects performance and brings nothing useful
     "UP038",
+    "RUF003",
+    "RUF002",
 ]
 
 [lint.per-file-ignores]
