@@ -85,12 +85,13 @@ class InfrastructureProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def get_change_tracker(
         self,
-        collection: AsyncIOMotorCollection[dict[str, Any]],
+        database: AsyncIOMotorDatabase[dict[str, Any]],
         retort: Retort,
         session: AsyncIOMotorClientSession,
     ) -> ChangeTracker:
         return MongoChangeTracker(
-            collection=collection,
+            collection_mapping={User: "example"},
+            database=database,
             retort=retort,
             session=session,
         )

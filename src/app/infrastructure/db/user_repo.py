@@ -4,7 +4,7 @@ from typing import Any
 
 from adaptix import Retort
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorClientSession
+from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorDatabase, AsyncIOMotorCollection
 
 from app.application.user_repo import UserRepository
 from app.domain.model import User
@@ -14,9 +14,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True, frozen=True)
 class MongoUserRepository(UserRepository):
-    collection: AsyncIOMotorCollection[dict[str, Any]]
+    database: AsyncIOMotorDatabase[dict[str, Any]]
     retort: Retort
     session: AsyncIOMotorClientSession
+
+    @property
+    def collection(self) -> AsyncIOMotorCollection[dict[str, Any]]:
+        return self.database["example"]
 
     async def add(self, user: User) -> None:
         user_dict = self.retort.dump(user)
