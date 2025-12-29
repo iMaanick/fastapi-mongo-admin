@@ -52,5 +52,5 @@ class UpdateUserInteractor:
         modified_count = await self.change_tracker.save()
 
         logger.info(f"User updated: {user.username}, modified_count={modified_count}")
-
+        await self.change_tracker.commit()
         return user

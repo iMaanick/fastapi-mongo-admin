@@ -9,6 +9,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorClient,
     AsyncIOMotorCollection,
     AsyncIOMotorDatabase,
+    AsyncIOMotorClientSession,
 )
 
 from app.application.change_tracker import ChangeTracker
@@ -24,7 +25,8 @@ class InfrastructureProvider(Provider):
 
     @provide(scope=Scope.APP)
     async def get_mongo_client(
-            self, config: MongoDBConfig,
+        self,
+        config: MongoDBConfig,
     ) -> AsyncIterator[AsyncIOMotorClient[dict[str, Any]]]:
         client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(config.uri)
         logger.debug("MongoDB client was initialized")
@@ -34,7 +36,9 @@ class InfrastructureProvider(Provider):
 
     @provide(scope=Scope.APP)
     def get_database(
-            self, client: AsyncIOMotorClient[dict[str, Any]], config: MongoDBConfig,
+        self,
+        client: AsyncIOMotorClient[dict[str, Any]],
+        config: MongoDBConfig,
     ) -> AsyncIOMotorDatabase[dict[str, Any]]:
         database = client[config.db_name]
         logger.debug(f"Database '{config.db_name}' was initialized")
@@ -42,10 +46,28 @@ class InfrastructureProvider(Provider):
 
     @provide
     def get_collection(
-            self, database: AsyncIOMotorDatabase[dict[str, Any]], config: MongoDBConfig,
+        self,
+        database: AsyncIOMotorDatabase[dict[str, Any]],
+        config: MongoDBConfig,
     ) -> AsyncIOMotorCollection[dict[str, Any]]:
         collection = database[config.collection_name]
         return collection
+
+    @provide(scope=Scope.REQUEST)
+    async def get_session(
+        self,
+        client: AsyncIOMotorClient[dict[str, Any]],
+    ) -> AsyncIterator[AsyncIOMotorClientSession]:
+        """Автоматически оборачивает весь REQUEST в транзакцию."""
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                logger.debug("MongoDB transaction started")
+                yield session
+                if session.in_transaction:
+                    await session.abort_transaction()
+                # Commit происходит автоматически при выходе из контекста
+                # Rollback - при исключении
+                logger.debug("MongoDB transaction committed")
 
     @provide(scope=Scope.APP)
     def get_mongo_retort(self) -> Retort:
@@ -64,8 +86,13 @@ class InfrastructureProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def get_change_tracker(
-            self,
-            collection: AsyncIOMotorCollection[dict[str, Any]],
-            retort: Retort,
+        self,
+        collection: AsyncIOMotorCollection[dict[str, Any]],
+        retort: Retort,
+        session: AsyncIOMotorClientSession,
     ) -> ChangeTracker:
-        return MongoChangeTracker(collection=collection, retort=retort)
+        return MongoChangeTracker(
+            collection=collection,
+            retort=retort,
+            session=session,
+        )

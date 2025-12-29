@@ -21,9 +21,16 @@ class MongoDBConfig:
 
     @property
     def uri(self) -> str:
+        # Если user/password не указаны - подключаемся без аутентификации
+        if self.user and self.password:
+            auth_part = f"{self.user}:{self.password}@"
+        else:
+            auth_part = ""
+
+        # directConnection=true для работы с replica set через localhost
         return (
-            f"mongodb://{self.user}:{self.password}@{self.host}"
-            f":{self.port}/"
+            f"mongodb://{auth_part}{self.host}:{self.port}/"
+            f"?directConnection=true"
         )
 
 

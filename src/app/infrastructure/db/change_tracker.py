@@ -4,18 +4,20 @@ from typing import Any
 
 from adaptix import Retort
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorClientSession
 from pymongo import ReplaceOne
 
+from app.application.change_tracker import ChangeTracker
 from app.domain.model import User
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MongoChangeTracker:
+class MongoChangeTracker(ChangeTracker):
     collection: AsyncIOMotorCollection[dict[str, Any]]
     retort: Retort
+    session: AsyncIOMotorClientSession
     _tracked_users: dict[str, User] = field(default_factory=dict, init=False)
 
     def track(self, user: User) -> None:
@@ -35,7 +37,10 @@ class MongoChangeTracker:
         logger.info(f"Tracking {len(users)} users")
 
     async def save(self) -> int:
-        """Массово сохранить все отслеживаемые объекты через bulk_write"""
+        """
+        Массово сохранить все отслеживаемые объекты через bulk_write.
+        НЕ коммитит транзакцию - это делается автоматически provider'ом.
+        """
         if not self._tracked_users:
             logger.info("No tracked users to save")
             return 0
@@ -58,7 +63,7 @@ class MongoChangeTracker:
                 ReplaceOne(
                     filter={"_id": object_id},
                     replacement=user_dict,
-                    upsert=False,  # Не создавать новый, если не существует
+                    upsert=False,
                 ),
             )
 
@@ -67,7 +72,12 @@ class MongoChangeTracker:
             self._tracked_users.clear()
             return 0
 
-        result = await self.collection.bulk_write(operations, ordered=False)
+        # Передаем session в bulk_write для участия в транзакции
+        result = await self.collection.bulk_write(
+            operations,
+            ordered=True,
+            session=self.session,
+        )
 
         logger.info(
             f"Bulk save completed: matched={result.matched_count}, "
@@ -78,6 +88,28 @@ class MongoChangeTracker:
         self._tracked_users.clear()
 
         return modified_count
+
+    async def commit(self) -> None:
+        """
+        Явно закоммитить транзакцию.
+        """
+        if self.session.in_transaction:
+            await self.session.commit_transaction()
+            logger.info("Transaction committed manually")
+        else:
+            logger.warning("No active transaction to commit")
+
+    async def rollback(self) -> None:
+        """
+        Откатить транзакцию и очистить tracked объекты.
+        """
+        if self.session.in_transaction:
+            await self.session.abort_transaction()
+            logger.info("Transaction rolled back")
+        else:
+            logger.warning("No active transaction to rollback")
+
+        self._tracked_users.clear()
 
     def clear(self) -> None:
         """Очистить отслеживаемые объекты без сохранения"""
