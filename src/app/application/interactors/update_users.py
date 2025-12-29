@@ -18,7 +18,7 @@ class UpdateUsersInteractor:
     user_repository: UserRepository
     change_tracker: ChangeTracker
 
-    async def __call__(self ) -> UpdateUsersResponse:
+    async def __call__(self) -> UpdateUsersResponse:
         logger.info("Starting bulk user update")
 
         users = await self.user_repository.get_all()
@@ -31,6 +31,7 @@ class UpdateUsersInteractor:
                 user.tags.append(new_tag)
 
         modified_count = await self.change_tracker.save()
+        await self.change_tracker.commit()
 
         logger.info(f"Modified {modified_count} users")
 

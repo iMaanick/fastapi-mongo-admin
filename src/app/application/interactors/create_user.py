@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
+from app.application.change_tracker import ChangeTracker
 from app.application.user_repo import UserRepository
 from app.domain.model import Tag, User
 
@@ -23,6 +24,8 @@ class CreateUserResponse:
 @dataclass(slots=True, frozen=True)
 class CreateUserInteractor:
     user_repository: UserRepository
+    change_tracker: ChangeTracker
+
 
     async def __call__(self, request_data: CreateUserRequest) -> CreateUserResponse:
         logger.info(f"Creating user: {request_data.username}")
@@ -34,6 +37,8 @@ class CreateUserInteractor:
         )
 
         await self.user_repository.add(user)
+        await self.change_tracker.commit()
+
 
         logger.info(f"User created: {user.username}")
 

@@ -4,7 +4,7 @@ from typing import Any
 
 from adaptix import Retort
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorClientSession
 
 from app.application.user_repo import UserRepository
 from app.domain.model import User
@@ -16,12 +16,16 @@ logger = logging.getLogger(__name__)
 class MongoUserRepository(UserRepository):
     collection: AsyncIOMotorCollection[dict[str, Any]]
     retort: Retort
+    session: AsyncIOMotorClientSession
 
     async def add(self, user: User) -> None:
         user_dict = self.retort.dump(user)
         user_dict.pop("_id", None)
 
-        result = await self.collection.insert_one(user_dict)
+        result = await self.collection.insert_one(
+            user_dict,
+            session=self.session,
+        )
         logger.info(f"User added with ID: {result.inserted_id}")
 
     async def get_by_id(self, user_id: str) -> User | None:
@@ -31,7 +35,10 @@ class MongoUserRepository(UserRepository):
             logger.warning(f"Invalid ObjectId format: {user_id}")
             return None
 
-        user_doc = await self.collection.find_one({"_id": object_id})
+        user_doc = await self.collection.find_one(
+            {"_id": object_id},
+            session=self.session,
+        )
 
         if not user_doc:
             logger.info(f"User not found: {user_id}")
@@ -40,11 +47,11 @@ class MongoUserRepository(UserRepository):
         return self.retort.load(user_doc, User)
 
     async def get_all(
-            self,
-            filter_query: dict[str, Any] | None = None,
-            skip: int = 0,
-            limit: int = 0,
-            sort: list[tuple[str, int]] | None = None,
+        self,
+        filter_query: dict[str, Any] | None = None,
+        skip: int = 0,
+        limit: int = 0,
+        sort: list[tuple[str, int]] | None = None,
     ) -> list[User]:
         """
         Получить пользователей с фильтрацией, пагинацией и сортировкой
@@ -57,7 +64,7 @@ class MongoUserRepository(UserRepository):
         """
         query = filter_query or {}
 
-        cursor = self.collection.find(query)
+        cursor = self.collection.find(query, session=self.session)
 
         if sort:
             cursor = cursor.sort(sort)
@@ -81,7 +88,10 @@ class MongoUserRepository(UserRepository):
             logger.warning(f"Invalid ObjectId format: {user_id}")
             raise ValueError(f"Invalid user ID format: {user_id}")
 
-        result = await self.collection.delete_one({"_id": object_id})
+        result = await self.collection.delete_one(
+            {"_id": object_id},
+            session=self.session,
+        )
 
         if result.deleted_count == 0:
             logger.warning(f"User not found for deletion: {user_id}")
