@@ -64,9 +64,7 @@ class InfrastructureProvider(Provider):
                 logger.debug("MongoDB transaction started")
                 yield session
                 if session.in_transaction:
-                    await session.abort_transaction()
-                # Commit происходит автоматически при выходе из контекста
-                # Rollback - при исключении
+                    await session.abort_transaction()  # нужно чтобы не было автокоммита
                 logger.debug("MongoDB transaction committed")
 
     @provide(scope=Scope.APP)

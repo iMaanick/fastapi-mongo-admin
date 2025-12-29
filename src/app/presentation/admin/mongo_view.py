@@ -149,11 +149,14 @@ class MongoUserView(BaseModelView):
 
         async with container() as req_container:
             repository = await req_container.get(UserRepository)
+            change_tracker = await req_container.get(ChangeTracker)
             retort = await req_container.get(Retort)
 
             user = retort.load(data, User)
 
             await repository.add(user)
+
+            await change_tracker.commit()
 
             return user
 
@@ -177,6 +180,7 @@ class MongoUserView(BaseModelView):
             change_tracker.track(updated_user)
 
             await change_tracker.save()
+            await change_tracker.commit()
 
             return updated_user
 
@@ -186,6 +190,7 @@ class MongoUserView(BaseModelView):
 
         async with container() as req_container:
             repository = await req_container.get(UserRepository)
+            change_tracker = await req_container.get(ChangeTracker)
 
             deleted = 0
             for pk in pks:
@@ -194,5 +199,5 @@ class MongoUserView(BaseModelView):
                     deleted += 1
                 except Exception:
                     continue
-
+            await change_tracker.commit()
             return deleted
