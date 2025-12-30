@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from adaptix import P, Retort, loader
+from adaptix import P, Retort, loader, validator
 from bson import ObjectId
 from dishka.integrations.fastapi import setup_dishka
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ from starlette_admin import BaseAdmin
 
 from app.bootstrap.configs import load_settings
 from app.bootstrap.ioc.containers import fastapi_container
+from app.domain.course import Course
 from app.infrastructure.log.main import configure_logging
 from app.presentation.admin.mongo_course_view import MongoCourseView
 from app.presentation.admin.mongo_view import MongoUserView
@@ -53,6 +54,11 @@ def create_app() -> FastAPI:
             loader(
                 P._id,  # noqa: SLF001
                 lambda x: str(x) if isinstance(x, ObjectId) else x,
+            ),
+            validator(
+                P[Course].price,
+                lambda x: x >= 0,
+                "Цена не может быть отрицательной",
             ),
         ],
     ))

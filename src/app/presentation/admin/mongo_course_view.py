@@ -9,6 +9,7 @@ from starlette_admin import (
     IntegerField,
     ListField,
     StringField,
+    TagsField,
     TextAreaField,
 )
 
@@ -82,10 +83,15 @@ class MongoCourseView(GenericMongoView[Course]):
             label="Опубликован",
         ),
 
-        # ✅ ПРАВИЛЬНО: ListField + CollectionField для списка объектов
+        TagsField(
+            name="tags",
+            label="Теги",
+            help_text="Введите теги через запятую (например: python, backend, fastapi)",
+        ),
+
         ListField(
             field=CollectionField(
-                name="lessons",  # Имя для одного элемента
+                name="lessons",
                 fields=[
                     StringField(
                         name="title",
