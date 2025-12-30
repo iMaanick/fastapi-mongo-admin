@@ -10,6 +10,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
 )
 
+from app.application.exceptions.base import EntityNotFoundError
 from app.application.user_repo import UserRepository
 from app.domain.model import User
 
@@ -96,6 +97,10 @@ class MongoUserRepository(UserRepository):
 
         if result.deleted_count == 0:
             logger.warning("User not found for deletion: %s", user_id)
-            raise ValueError(f"User not found: {user_id}")
+            raise EntityNotFoundError(
+                entity_type=User,
+                field_name="_id",
+                field_value=user_id,
+            )
 
         logger.info("User deleted: %s", user_id)

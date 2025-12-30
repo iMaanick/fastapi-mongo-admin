@@ -2,14 +2,11 @@ import logging
 from dataclasses import dataclass
 
 from app.application.change_tracker import ChangeTracker
+from app.application.exceptions.base import EntityNotFoundError
 from app.application.user_repo import UserRepository
 from app.domain.model import Tag, User
 
 logger = logging.getLogger(__name__)
-
-
-class UserNotFoundError(Exception):
-    """Пользователь не найден"""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -33,8 +30,10 @@ class UpdateUserInteractor:
 
         if user is None:
             logger.warning("User not found: %s", request_data.user_id)
-            raise UserNotFoundError(
-                f"User with ID {request_data.user_id} not found",
+            raise EntityNotFoundError(
+                entity_type=User,
+                field_name="_id",
+                field_value=request_data.user_id,
             )
 
         self.change_tracker.track(user)

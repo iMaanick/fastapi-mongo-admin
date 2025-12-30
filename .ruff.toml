@@ -30,6 +30,8 @@ lint.ignore = [
     "UP038",
     "RUF003",
     "RUF002",
+    "TRY300",
+    "TRY301",
 ]
 
 [lint.per-file-ignores]

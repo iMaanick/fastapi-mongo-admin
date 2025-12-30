@@ -7,14 +7,10 @@ class AppError(Exception):
     def message(self) -> str:
         return ""
 
-    @property
-    def title(self) -> str:
-        return "An app error occurred"
-
 
 @dataclass(eq=False)
 class DomainError(AppError):
 
     @property
-    def title(self) -> str:
+    def message(self) -> str:
         return "A domain error occurred"

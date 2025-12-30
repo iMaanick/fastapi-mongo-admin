@@ -4,6 +4,8 @@ from typing import Any
 
 from bson import ObjectId
 
+from app.application.exceptions.base import InvalidQueryOperatorError
+
 
 def build_mongo_filter(where: dict[str, Any] | str | None) -> dict[str, Any]:
     """
@@ -108,7 +110,7 @@ def _resolve_where_dict(
             if current_field:
                 queries.append(OPERATORS[key](current_field, value))
             else:
-                raise ValueError(f"Operator {key} without field context")
+                raise InvalidQueryOperatorError(operator=key)
 
         else:
             # Это название поля, рекурсивно обрабатываем вложенные операторы

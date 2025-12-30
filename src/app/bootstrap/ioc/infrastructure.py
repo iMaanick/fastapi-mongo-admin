@@ -60,21 +60,23 @@ class InfrastructureProvider(Provider):
         client: AsyncIOMotorClient[dict[str, Any]],
     ) -> AsyncIterator[AsyncIOMotorClientSession]:
         """Автоматически оборачивает весь REQUEST в транзакцию."""
-        async with await client.start_session() as session:
-            async with session.start_transaction():
-                logger.debug("MongoDB transaction started")
-                yield session
-                if session.in_transaction:  # type: ignore[truthy-function]
-                    # нужно чтобы не было автокоммита
-                    await session.abort_transaction()
-                logger.debug("MongoDB transaction committed")
+        async with (
+            await client.start_session() as session,
+            session.start_transaction(),
+        ):
+            logger.debug("MongoDB transaction started")
+            yield session
+            if session.in_transaction:  # type: ignore[truthy-function]
+                # нужно чтобы не было автокоммита
+                await session.abort_transaction()
+            logger.debug("MongoDB transaction committed")
 
     @provide(scope=Scope.APP)
     def get_mongo_retort(self) -> Retort:
         return Retort(
             recipe=[
                 loader(
-                    P[User]._id,
+                    P[User]._id,  # noqa: SLF001
                     lambda x: str(x) if isinstance(x, ObjectId) else x,
                 ),
                 name_mapping(

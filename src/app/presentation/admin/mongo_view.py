@@ -15,6 +15,7 @@ from starlette_admin import (
 )
 
 from app.application.change_tracker import ChangeTracker
+from app.application.exceptions.base import EntityNotFoundError
 from app.application.user_repo import UserRepository
 from app.domain.model import User
 from app.infrastructure.db.query_builder import build_mongo_filter
@@ -45,7 +46,12 @@ class MongoUserView(BaseModelView):
         ),
     ]
 
-    sortable_fields: tuple[str] = ("_id", "username", "email", "is_active")
+    sortable_fields: tuple[str, str, str, str] = (
+        "_id",
+        "username",
+        "email",
+        "is_active",
+    )
     searchable_fields: Sequence[str] = ["username", "email"]
     exclude_fields_from_list: Sequence[str] = ["unused_field"]
     fields_default_sort: Sequence[str] = ["_id"]
@@ -129,12 +135,7 @@ class MongoUserView(BaseModelView):
                 UserRepository,
             )
 
-            object_ids = []
-            for pk in pks:
-                try:
-                    object_ids.append(ObjectId(str(pk)))
-                except Exception:
-                    continue
+            object_ids = [ObjectId(str(pk)) for pk in pks]
 
             if not object_ids:
                 return []
@@ -179,7 +180,11 @@ class MongoUserView(BaseModelView):
 
             existing_user = await repository.get_by_id(str(pk))
             if not existing_user:
-                raise ValueError(f"User {pk} not found")
+                raise EntityNotFoundError(
+                    entity_type=User,
+                    field_name="_id",
+                    field_value=pk,
+                )
 
             data["_id"] = str(pk)
 
@@ -202,10 +207,7 @@ class MongoUserView(BaseModelView):
 
             deleted = 0
             for pk in pks:
-                try:
-                    await repository.delete(str(pk))
-                    deleted += 1
-                except Exception:
-                    continue
+                await repository.delete(str(pk))
+                deleted += 1
             await change_tracker.commit()
             return deleted
