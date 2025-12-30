@@ -23,6 +23,7 @@ dependencies = [
     "structlog",
     "motor>=3.3.0",
     "starlette-admin",
+    "tzdata",
 ]
 [project.optional-dependencies]
 dev = [
