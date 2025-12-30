@@ -2,20 +2,20 @@ from dishka import FromDishka
 from dishka.integrations.fastapi import inject
 from fastapi import APIRouter
 
-from app.application.interactors.create_user import (
+from app.application.interactors.user.create_user import (
     CreateUserInteractor,
     CreateUserRequest,
     CreateUserResponse,
 )
-from app.application.interactors.get_user import (
+from app.application.interactors.user.get_user import (
     GetUserInteractor,
     GetUserRequest,
 )
-from app.application.interactors.update_user import (
+from app.application.interactors.user.update_user import (
     UpdateUserInteractor,
     UpdateUserRequest,
 )
-from app.application.interactors.update_users import (
+from app.application.interactors.user.update_users import (
     UpdateUsersInteractor,
     UpdateUsersResponse,
 )

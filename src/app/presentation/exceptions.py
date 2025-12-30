@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
-    # Специфичный handler для ChangeTrackerError
     app.add_exception_handler(
         EntityNotFoundError,
         error_handler(404),

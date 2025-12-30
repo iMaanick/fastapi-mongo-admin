@@ -1,8 +1,6 @@
 from collections.abc import Sequence
 from typing import Any
 
-from adaptix import Retort
-from bson import ObjectId
 from dishka import AsyncContainer
 from starlette.requests import Request
 from starlette_admin import (
@@ -14,14 +12,37 @@ from starlette_admin import (
     StringField,
 )
 
-from app.application.change_tracker import ChangeTracker
-from app.application.exceptions.base import EntityNotFoundError
-from app.application.user_repo import UserRepository
-from app.domain.model import User
+from app.application.interactors.admin.count_users import (
+    CountUsersAdminInteractor,
+    CountUsersAdminRequest,
+)
+from app.application.interactors.admin.create_user_admin import (
+    CreateUserAdminInteractor,
+    CreateUserAdminRequest,
+)
+from app.application.interactors.admin.delete_users_admin import (
+    DeleteUsersAdminInteractor,
+    DeleteUsersAdminRequest,
+)
+from app.application.interactors.admin.get_user_by_id import (
+    GetUserByIdAdminInteractor,
+    GetUserByIdAdminRequest,
+)
+from app.application.interactors.admin.get_users import (
+    GetUsersAdminInteractor,
+    GetUsersAdminRequest,
+)
+from app.application.interactors.admin.get_users_by_ids import (
+    GetUsersByIdsAdminInteractor,
+    GetUsersByIdsAdminRequest,
+)
+from app.application.interactors.admin.update_user_admin import (
+    UpdateUserAdminInteractor,
+    UpdateUserAdminRequest,
+)
 from app.infrastructure.db.query_builder import build_mongo_filter
 
 
-# по-хорошему в методах нужно дергать интеракторы, но мне лень (пока что)
 class MongoUserView(BaseModelView):
     """Кастомная админка для MongoDB User"""
 
@@ -66,32 +87,23 @@ class MongoUserView(BaseModelView):
         where: dict[str, Any] | str | None = None,
         order_by: list[str] | None = None,
     ) -> list[Any]:
-        """Получение списка пользователей с фильтрацией и сортировкой"""
         container: AsyncContainer = request.state.dishka_container
 
         async with container() as req_container:
-            repository: UserRepository = await req_container.get(
-                UserRepository,
+            interactor: GetUsersAdminInteractor = await req_container.get(
+                GetUsersAdminInteractor,
             )
 
-            # Преобразуем where в MongoDB filter
             mongo_filter = build_mongo_filter(where)
+            sort = self._build_sort(order_by)
 
-            # Преобразуем order_by в MongoDB sort
-            sort = None
-            if order_by:
-                sort = []
-                for item in order_by:
-                    key, direction = item.split(maxsplit=1)
-                    sort_direction = -1 if direction.lower() == "desc" else 1
-                    sort.append((key, sort_direction))
-
-            # Получаем данные через repository
-            return await repository.get_all(
-                filter_query=mongo_filter,
-                skip=skip,
-                limit=max(0, limit),
-                sort=sort,
+            return await interactor(
+                GetUsersAdminRequest(
+                    filter_query=mongo_filter,
+                    skip=skip,
+                    limit=limit,
+                    sort=sort,
+                ),
             )
 
     async def count(
@@ -99,70 +111,52 @@ class MongoUserView(BaseModelView):
         request: Request,
         where: dict[str, Any] | str | None = None,
     ) -> int:
-        """Подсчет количества документов с учётом фильтра"""
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
+            interactor: CountUsersAdminInteractor = await req_container.get(
+                CountUsersAdminInteractor,
+            )
 
-            # Преобразуем where в MongoDB filter
             mongo_filter = build_mongo_filter(where)
 
-            # Получаем все данные с фильтром (без пагинации)
-            users = await repository.get_all(
-                filter_query=mongo_filter,
-                skip=0,
-                limit=0,  # 0 = без лимита
-                sort=None,
+            return await interactor(
+                CountUsersAdminRequest(filter_query=mongo_filter),
             )
-
-            return len(users)
 
     async def find_by_pk(self, request: Request, pk: Any) -> Any:
-        """Получение пользователя по ID"""
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
-            return await repository.get_by_id(str(pk))
-
-    async def find_by_pks(self, request: Request, pks: list[Any]) -> list[Any]:
-        """Получение пользователей по списку ID"""
-        container = request.state.dishka_container
-
-        async with container() as req_container:
-            repository: UserRepository = await req_container.get(
-                UserRepository,
+            interactor: GetUserByIdAdminInteractor = await req_container.get(
+                GetUserByIdAdminInteractor,
             )
 
-            object_ids = [ObjectId(str(pk)) for pk in pks]
+            return await interactor(GetUserByIdAdminRequest(user_id=str(pk)))
 
-            if not object_ids:
-                return []
+    async def find_by_pks(self, request: Request, pks: list[Any]) -> list[Any]:
+        container = request.state.dishka_container
 
-            return await repository.get_all(
-                filter_query={"_id": {"$in": object_ids}},
-                skip=0,
-                limit=0,
-                sort=None,
+        async with container() as req_container:
+            interactor: GetUsersByIdsAdminInteractor = await req_container.get(
+                GetUsersByIdsAdminInteractor,
+            )
+
+            user_ids = [str(pk) for pk in pks]
+
+            return await interactor(
+                GetUsersByIdsAdminRequest(user_ids=user_ids),
             )
 
     async def create(self, request: Request, data: dict[str, Any]) -> Any:
-        """Создание пользователя"""
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
-            change_tracker = await req_container.get(ChangeTracker)
-            retort = await req_container.get(Retort)
+            interactor: CreateUserAdminInteractor = await req_container.get(
+                CreateUserAdminInteractor,
+            )
 
-            user = retort.load(data, User)
-
-            await repository.add(user)
-
-            await change_tracker.commit()
-
-            return user
+            return await interactor(CreateUserAdminRequest(data=data))
 
     async def edit(
         self,
@@ -170,44 +164,43 @@ class MongoUserView(BaseModelView):
         pk: Any,
         data: dict[str, Any],
     ) -> Any:
-        """Редактирование пользователя через ChangeTracker"""
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
-            change_tracker = await req_container.get(ChangeTracker)
-            retort = await req_container.get(Retort)
+            interactor: UpdateUserAdminInteractor = await req_container.get(
+                UpdateUserAdminInteractor,
+            )
 
-            existing_user = await repository.get_by_id(str(pk))
-            if not existing_user:
-                raise EntityNotFoundError(
-                    entity_type=User,
-                    field_name="_id",
-                    field_value=pk,
-                )
-
-            data["_id"] = str(pk)
-
-            updated_user = retort.load(data, User)
-
-            change_tracker.track(updated_user)
-
-            await change_tracker.save()
-            await change_tracker.commit()
-
-            return updated_user
+            return await interactor(
+                UpdateUserAdminRequest(user_id=str(pk), data=data),
+            )
 
     async def delete(self, request: Request, pks: list[Any]) -> int | None:
-        """Удаление пользователей"""
         container = request.state.dishka_container
 
         async with container() as req_container:
-            repository = await req_container.get(UserRepository)
-            change_tracker = await req_container.get(ChangeTracker)
+            interactor: DeleteUsersAdminInteractor = await req_container.get(
+                DeleteUsersAdminInteractor,
+            )
 
-            deleted = 0
-            for pk in pks:
-                await repository.delete(str(pk))
-                deleted += 1
-            await change_tracker.commit()
-            return deleted
+            user_ids = [str(pk) for pk in pks]
+
+            return await interactor(
+                DeleteUsersAdminRequest(user_ids=user_ids),
+            )
+
+    @staticmethod
+    def _build_sort(
+        order_by: list[str] | None,
+    ) -> list[tuple[str, int]] | None:
+        """Построить sort для MongoDB из order_by"""
+        if not order_by:
+            return None
+
+        sort = []
+        for item in order_by:
+            key, direction = item.split(maxsplit=1)
+            sort_direction = -1 if direction.lower() == "desc" else 1
+            sort.append((key, sort_direction))
+
+        return sort
