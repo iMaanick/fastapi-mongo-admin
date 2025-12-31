@@ -1,11 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Optional
 from unittest.mock import Mock
 
 import pytest
 
 from app.example import Session
-
 
 # ============= Тестовые модели =============
 
@@ -30,7 +28,7 @@ class NestedTag:
 @dataclass
 class DeepTag:
     title: str
-    nested: Optional[NestedTag] = None
+    nested: NestedTag | None = None
 
     def __repr__(self):
         return f"DeepTag({self.title}, nested={self.nested})"
@@ -42,14 +40,14 @@ class User:
     email: str
     tags: list[Tag] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
-    _id: Optional[str] = None
+    _id: str | None = None
 
 
 @dataclass
 class ComplexUser:
     username: str
     tags: list[DeepTag] = field(default_factory=list)
-    _id: Optional[str] = None
+    _id: str | None = None
 
 
 # ============= Фикстуры =============
@@ -82,7 +80,7 @@ def simple_user():
 def user_with_tags():
     """Пользователь с тегами"""
     return User(
-        username="alice", email="alice@example.com", tags=[Tag("python"), Tag("django")]
+        username="alice", email="alice@example.com", tags=[Tag("python"), Tag("django")],
     )
 
 
@@ -265,8 +263,8 @@ class TestEdgeCases:
 
         @dataclass
         class NullableUser:
-            username: Optional[str] = None
-            tags: Optional[list] = None
+            username: str | None = None
+            tags: list | None = None
 
         user = NullableUser()
         session.add(user)
@@ -592,7 +590,7 @@ CHANGE_TEST_CASES = [
 
 
 @pytest.mark.parametrize(
-    "test_case", [pytest.param(tc, id=tc.id) for tc in CHANGE_TEST_CASES]
+    "test_case", [pytest.param(tc, id=tc.id) for tc in CHANGE_TEST_CASES],
 )
 def test_parametrized_changes(session, user_with_tags, test_case: ChangeTestCase):
     """Параметризованный тест различных изменений"""
