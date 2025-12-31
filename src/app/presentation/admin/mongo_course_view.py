@@ -7,7 +7,6 @@ from starlette_admin import (
     EnumField,
     FloatField,
     IntegerField,
-    ListField,
     StringField,
     TagsField,
     TextAreaField,
@@ -15,6 +14,7 @@ from starlette_admin import (
 
 from app.domain.course import Course, CourseLevel, CourseStatus
 from app.presentation.admin.generic_mongo_view import GenericMongoView
+from app.presentation.admin.lessons_list_field import LessonsListField
 
 
 class MongoCourseView(GenericMongoView[Course]):
@@ -89,7 +89,7 @@ class MongoCourseView(GenericMongoView[Course]):
             help_text="Введите теги через запятую (например: python, backend, fastapi)",
         ),
 
-        ListField(
+        LessonsListField(
             field=CollectionField(
                 name="lessons",
                 fields=[
