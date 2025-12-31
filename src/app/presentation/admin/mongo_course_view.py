@@ -82,13 +82,11 @@ class MongoCourseView(GenericMongoView[Course]):
             name="is_published",
             label="Опубликован",
         ),
-
         TagsField(
             name="tags",
             label="Теги",
             help_text="Введите теги через запятую (например: python, backend, fastapi)",
         ),
-
         LessonsListField(
             field=CollectionField(
                 name="lessons",
@@ -121,8 +119,19 @@ class MongoCourseView(GenericMongoView[Course]):
                 ],
             ),
         ),
+        StringField(
+            name="created_at",
+            label="Создан",
+            exclude_from_create=True,
+            read_only=True,
+        ),
+        StringField(
+            name="updated_at",
+            label="Обновлен",
+            exclude_from_create=True,
+            exclude_from_edit=True,
+        ),
     ]
-
     sortable_fields: tuple[str, ...] = (
         "_id",
         "title",

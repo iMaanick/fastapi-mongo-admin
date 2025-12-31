@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pprint import pprint
 from typing import Any, Generic, TypeVar
 
 from adaptix import Retort
@@ -226,6 +227,7 @@ class GenericMongoView(BaseModelView, Generic[T]):
             data: dict[str, Any],
     ) -> Any:
         """Редактирование сущности"""
+        pprint(data)
         async with self._transaction() as session:
             existing = await self._repository.get_by_id(str(pk), session)
             if existing is None:

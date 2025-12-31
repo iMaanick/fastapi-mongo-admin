@@ -49,19 +49,22 @@ def create_app() -> FastAPI:
     client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
         config.database.uri,
     )
-    course_view = MongoCourseView(client=client, retort=Retort(
-        recipe=[
-            loader(
-                P._id,  # noqa: SLF001
-                lambda x: str(x) if isinstance(x, ObjectId) else x,
-            ),
-            validator(
-                P[Course].price,
-                lambda x: x >= 0,
-                "Цена не может быть отрицательной",
-            ),
-        ],
-    ))
+    course_view = MongoCourseView(
+        client=client,
+        retort=Retort(
+            recipe=[
+                loader(
+                    P._id,  # noqa: SLF001
+                    lambda x: str(x) if isinstance(x, ObjectId) else x,
+                ),
+                validator(
+                    P[Course].price,
+                    lambda x: x >= 0,
+                    "Цена не может быть отрицательной",
+                ),
+            ],
+        ),
+    )
     admin.add_view(course_view)
     init_routers(app)
     setup_middlewares(app)
