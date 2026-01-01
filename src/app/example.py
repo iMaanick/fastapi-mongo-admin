@@ -1,11 +1,10 @@
 import copy
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import fields, is_dataclass
 from typing import Any, SupportsIndex
 from weakref import ref
 
 from bson import ObjectId
 from motor.motor_asyncio import (
-    AsyncIOMotorClient,
     AsyncIOMotorClientSession,
     AsyncIOMotorCollection,
     AsyncIOMotorDatabase,
@@ -23,18 +22,22 @@ class InstanceState:
     def mark_changed(self, field_name: str, original_value: Any) -> None:
         if field_name not in self.changed_fields:
             if isinstance(original_value, TrackedObject):
-                # ✅ Разворачиваем TrackedObject перед копированием
                 obj = object.__getattribute__(original_value, "_obj")
                 self.original_values[field_name] = copy.deepcopy(obj)
             elif isinstance(original_value, list | dict):
                 if hasattr(original_value, "_unwrap_for_copy"):
-                    self.original_values[field_name] = original_value._unwrap_for_copy(
+                    unwrapper = original_value._unwrap_for_copy  # noqa: SLF001
+                    self.original_values[field_name] = unwrapper(
                         original_value,
                     )
                 else:
-                    self.original_values[field_name] = copy.deepcopy(original_value)
+                    self.original_values[field_name] = copy.deepcopy(
+                        original_value,
+                    )
             else:
-                self.original_values[field_name] = copy.deepcopy(original_value)
+                self.original_values[field_name] = copy.deepcopy(
+                    original_value,
+                )
         self.changed_fields.add(field_name)
 
     def get_changed_fields(self) -> set[str]:
@@ -44,7 +47,7 @@ class InstanceState:
         return self.original_values.get(field_name)
 
 
-class TrackedList(list[Any]):
+class TrackedList(list):
     """Список с отслеживанием изменений"""
 
     def __init__(
@@ -53,9 +56,9 @@ class TrackedList(list[Any]):
         instance: Any,
         field_name: str,
         session_instance_states: dict[int, InstanceState],
+        *,
         is_nested: bool = False,
     ) -> None:
-        # Обрабатываем вложенные списки рекурсивно
         processed_data = self._wrap_nested_lists(
             data,
             instance,
@@ -68,10 +71,8 @@ class TrackedList(list[Any]):
         self._session_instance_states = session_instance_states
         self._is_nested = is_nested
 
-        # ✅ Оборачиваем объекты ПОСЛЕ создания списка
         self._wrap_objects_in_list()
 
-        # ✅ Сохраняем ТОЛЬКО для корневого списка
         if not is_nested:
             self._mark_initial_state()
 
@@ -100,7 +101,7 @@ class TrackedList(list[Any]):
         return result
 
     def _wrap_objects_in_list(self) -> None:
-        """Оборачивает объекты в TrackedObject после создания списка"""
+        """Оборачивает объекты в TrackedObject"""
         for i, item in enumerate(self):
             if isinstance(item, (TrackedObject, TrackedList)):
                 continue
@@ -111,19 +112,19 @@ class TrackedList(list[Any]):
         if self._instance_id in self._session_instance_states:
             state = self._session_instance_states[self._instance_id]
             if self._field_name not in state.original_values:
-                state.original_values[self._field_name] = self._unwrap_for_copy(self)
+                unwrapped = self._unwrap_for_copy(self)
+                state.original_values[self._field_name] = unwrapped
 
     def _unwrap_for_copy(self, data: Any) -> Any:
-        """Разворачивает TrackedList/TrackedObject и возвращает глубокую копию"""
+        """Разворачивает TrackedList/TrackedObject"""
         if isinstance(data, TrackedList):
             return [self._unwrap_for_copy(item) for item in data]
-        elif isinstance(data, TrackedObject):
+        if isinstance(data, TrackedObject):
             obj = object.__getattribute__(data, "_obj")
             return copy.deepcopy(obj)
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return [self._unwrap_for_copy(item) for item in data]
-        else:
-            return copy.copy(data) if hasattr(data, "__dict__") else data
+        return copy.copy(data) if hasattr(data, "__dict__") else data
 
     def _mark_changed(self) -> None:
         if self._instance_id in self._session_instance_states:
@@ -140,15 +141,21 @@ class TrackedList(list[Any]):
                 self._session_instance_states,
                 is_nested=True,
             )
-        elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+        elif hasattr(item, "__dict__") and not isinstance(
+            item,
+            TrackedObject,
+        ):
             item = TrackedObject(item, self)
         super().append(item)
 
     def extend(self, items: Any) -> None:
         self._mark_changed()
-        wrapped_items = []
+        wrapped_items: list[Any] = []
         for item in items:
-            if isinstance(item, list) and not isinstance(item, TrackedList):
+            if isinstance(item, list) and not isinstance(
+                item,
+                TrackedList,
+            ):
                 wrapped_items.append(
                     TrackedList(
                         item,
@@ -158,7 +165,10 @@ class TrackedList(list[Any]):
                         is_nested=True,
                     ),
                 )
-            elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+            elif hasattr(item, "__dict__") and not isinstance(
+                item,
+                TrackedObject,
+            ):
                 wrapped_items.append(TrackedObject(item, self))
             else:
                 wrapped_items.append(item)
@@ -174,7 +184,10 @@ class TrackedList(list[Any]):
                 self._session_instance_states,
                 is_nested=True,
             )
-        elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+        elif hasattr(item, "__dict__") and not isinstance(
+            item,
+            TrackedObject,
+        ):
             item = TrackedObject(item, self)
         super().insert(index, item)
 
@@ -200,7 +213,10 @@ class TrackedList(list[Any]):
                 self._session_instance_states,
                 is_nested=True,
             )
-        elif hasattr(value, "__dict__") and not isinstance(value, TrackedObject):
+        elif hasattr(value, "__dict__") and not isinstance(
+            value,
+            TrackedObject,
+        ):
             value = TrackedObject(value, self)
         super().__setitem__(key, value)
 
@@ -215,29 +231,31 @@ class TrackedList(list[Any]):
             return item
 
         if isinstance(item, list):
-            tracked_item = TrackedList(
+            tracked_list = TrackedList(
                 item,
                 self._get_root_instance(),
                 self._field_name,
                 self._session_instance_states,
                 is_nested=True,
             )
-            super().__setitem__(key, tracked_item)
-            return tracked_item
+            super().__setitem__(key, tracked_list)
+            return tracked_list
 
         if hasattr(item, "__dict__") and not isinstance(item, list):
-            tracked_item = TrackedObject(item, self)
-            super().__setitem__(key, tracked_item)
-            return tracked_item
+            tracked_object = TrackedObject(item, self)
+            super().__setitem__(key, tracked_object)
+            return tracked_object
 
         return item
 
     def _get_root_instance(self) -> Any:
-        """Получает корневой instance для вложенных списков"""
+        """Получает корневой instance"""
         current = self
         while isinstance(current, TrackedList):
-            if current._instance_id in current._session_instance_states:
-                state = current._session_instance_states[current._instance_id]
+            inst_id = current._instance_id  # noqa: SLF001
+            states = current._session_instance_states  # noqa: SLF001
+            if inst_id in states:
+                state = states[inst_id]
                 if state.instance_ref() is not None:
                     return state.instance_ref()
             break
@@ -251,15 +269,35 @@ class TrackedObject:
         object.__setattr__(self, "_obj", obj)
         object.__setattr__(self, "_parent", parent)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattribute__(self, name: str) -> Any:
+        if name == "__class__":
+            obj = object.__getattribute__(self, "_obj")
+            return obj.__class__
+
+        if name in ("_obj", "_parent"):
+            return object.__getattribute__(self, name)
+
+        if name in (
+            "_mark_parent_changed",
+            "_mark_root_instance_changed",
+            "_find_field_name_in_parent",
+            "_get_root_instance",
+            "_get_root_field_name",
+            "__setattr__",
+            "__getitem__",
+            "__repr__",
+        ):
+            return object.__getattribute__(self, name)
+
         obj = object.__getattribute__(self, "_obj")
         value = getattr(obj, name)
 
-        # ✅ Оборачиваем вложенные объекты
-        if hasattr(value, "__dict__") and not isinstance(value, TrackedObject):
+        if hasattr(value, "__dict__") and not isinstance(
+            value,
+            TrackedObject,
+        ):
             return TrackedObject(value, self)
 
-        # ✅ Оборачиваем списки в TrackedList
         if isinstance(value, list) and not isinstance(value, TrackedList):
             root_instance = self._get_root_instance()
             field_name = self._get_root_field_name()
@@ -273,21 +311,21 @@ class TrackedObject:
                             value,
                             root_instance,
                             field_name,
-                            session._instance_states,
+                            session._instance_states,  # noqa: SLF001
                             is_nested=True,
                         )
-                        # ✅ Сохраняем TrackedList в объекте
                         setattr(obj, name, tracked_list)
                         return tracked_list
 
         return value
 
     def __getitem__(self, key: Any) -> Any:
-        """Поддержка индексации если объект поддерживает []"""
+        """Поддержка индексации"""
         obj = object.__getattribute__(self, "_obj")
         if hasattr(obj, "__getitem__"):
             return obj[key]
-        raise TypeError(f"'{type(obj).__name__}' object is not subscriptable")
+        msg = f"'{type(obj).__name__}' object is not subscriptable"
+        raise TypeError(msg)
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name.startswith("_"):
@@ -305,9 +343,7 @@ class TrackedObject:
             parent._mark_changed()  # noqa: SLF001
         elif isinstance(parent, TrackedObject):
             parent._mark_parent_changed()  # noqa: SLF001
-        # ✅ ДОБАВИТЬ: Поддержка root instance
         else:
-            # parent - это root instance (User)
             self._mark_root_instance_changed()
 
     def _mark_root_instance_changed(self) -> None:
@@ -326,17 +362,16 @@ class TrackedObject:
             return
 
         instance_id = id(parent)
-        if instance_id not in session._instance_states:
+        if instance_id not in session._instance_states:  # noqa: SLF001
             return
 
-        # Находим имя поля которое содержит этот объект
         field_name = self._find_field_name_in_parent(parent)
         if field_name:
-            state = session._instance_states[instance_id]
+            state = session._instance_states[instance_id]  # noqa: SLF001
             state.changed_fields.add(field_name)
 
     def _find_field_name_in_parent(self, parent: Any) -> str | None:
-        """Находит имя поля в parent которое содержит этот TrackedObject"""
+        """Находит имя поля в parent"""
         obj = object.__getattribute__(self, "_obj")
 
         for field_name in dir(parent):
@@ -345,7 +380,6 @@ class TrackedObject:
             try:
                 value = getattr(parent, field_name)
 
-                # ✅ Проверяем и TrackedObject и оригинальный объект
                 if isinstance(value, TrackedObject):
                     wrapped_obj = object.__getattribute__(value, "_obj")
                     if wrapped_obj is obj or value is self:
@@ -362,20 +396,14 @@ class TrackedObject:
         obj = object.__getattribute__(self, "_obj")
         return repr(obj)
 
-    @property
-    def __class__(self) -> type:
-        """Возвращает класс оригинального объекта"""
-        obj = object.__getattribute__(self, "_obj")
-        return obj.__class__
-
     def _get_root_instance(self) -> Any:
         """Получает корневой instance"""
         parent = object.__getattribute__(self, "_parent")
 
         if isinstance(parent, TrackedList):
-            return parent._get_root_instance()
-        elif isinstance(parent, TrackedObject):
-            return parent._get_root_instance()
+            return parent._get_root_instance()  # noqa: SLF001
+        if isinstance(parent, TrackedObject):
+            return parent._get_root_instance()  # noqa: SLF001
 
         return None
 
@@ -384,14 +412,11 @@ class TrackedObject:
         parent = object.__getattribute__(self, "_parent")
 
         if isinstance(parent, TrackedList):
-            return parent._field_name
-        elif isinstance(parent, TrackedObject):
-            return parent._get_root_field_name()
+            return parent._field_name  # noqa: SLF001
+        if isinstance(parent, TrackedObject):
+            return parent._get_root_field_name()  # noqa: SLF001
 
         return ""
-
-
-# ============= Исключения =============
 
 
 class DatabaseNotSetError(ValueError):
@@ -431,29 +456,19 @@ class ClassNotInstrumentedError(RuntimeError):
         )
 
 
-# ============= Инструментация классов =============
-
-
-# Маркер для проверки инструментированности класса
 _INSTRUMENTED_MARKER = "__session_instrumented__"
 
 
 def is_class_instrumented(cls: type) -> bool:
-    """Проверяет, инструментирован ли класс для отслеживания"""
+    """Проверяет, инструментирован ли класс"""
     return hasattr(cls, _INSTRUMENTED_MARKER)
 
 
-def instrument_class(cls: type) -> None:
-    """
-    Инструментирует класс для отслеживания изменений.
-
-    Raises:
-        ClassAlreadyInstrumentedError: Если класс уже инструментирован
-    """
+def instrument_class(cls: type) -> None:  # noqa: C901
+    """Инструментирует класс для отслеживания изменений"""
     if is_class_instrumented(cls):
         raise ClassAlreadyInstrumentedError(cls)
 
-    # Сохраняем оригинальный __setattr__
     original_setattr = cls.__setattr__
 
     def tracking_setattr(instance: Any, name: str, value: Any) -> None:
@@ -463,9 +478,9 @@ def instrument_class(cls: type) -> None:
         if session_ref is not None:
             session = session_ref()
             if session is not None:
-                session_states = session._instance_states  # noqa: SLF001
-                if instance_id in session_states and not name.startswith("_"):
-                    state = session_states[instance_id]
+                states = session._instance_states  # noqa: SLF001
+                if instance_id in states and not name.startswith("_"):
+                    state = states[instance_id]
 
                     if hasattr(instance, name):
                         old_value = getattr(instance, name)
@@ -479,7 +494,7 @@ def instrument_class(cls: type) -> None:
                             value,
                             instance,
                             name,
-                            session_states,
+                            states,
                         )
 
         original_setattr(instance, name, value)  # type: ignore[call-arg]
@@ -490,14 +505,10 @@ def instrument_class(cls: type) -> None:
 
         if session_ref is not None:
             session = session_ref()
-            if (
-                session is not None
-                and instance_id in session._instance_states  # noqa: SLF001
-            ):
-                states: dict[int, InstanceState] = (
-                    session._instance_states  # noqa: SLF001
-                )
-                return states[instance_id].get_changed_fields()
+            if session is not None:
+                states = session._instance_states  # noqa: SLF001
+                if instance_id in states:
+                    return states[instance_id].get_changed_fields()
         return set()
 
     def get_original_value(self: Any, field_name: str) -> Any:
@@ -506,31 +517,21 @@ def instrument_class(cls: type) -> None:
 
         if session_ref is not None:
             session = session_ref()
-            if (
-                session is not None
-                and instance_id in session._instance_states  # noqa: SLF001
-            ):
-                states: dict[int, InstanceState] = (
-                    session._instance_states  # noqa: SLF001
-                )
-                return states[instance_id].get_original_value(field_name)
+            if session is not None:
+                states = session._instance_states  # noqa: SLF001
+                if instance_id in states:
+                    return states[instance_id].get_original_value(field_name)
         return None
 
-    # Патчим класс
     cls.__setattr__ = tracking_setattr  # type: ignore[assignment]
     cls.get_changed_fields = get_changed_fields  # type: ignore[attr-defined]
     cls.get_original_value = get_original_value  # type: ignore[attr-defined]
 
-    # Помечаем класс как инструментированный
     setattr(cls, _INSTRUMENTED_MARKER, True)
 
 
 class Session:
-    """
-    Session в стиле SQLAlchemy с отслеживанием изменений и MongoDB
-
-    Каждая сессия создается для одного запроса и имеет собственное состояние.
-    """
+    """Session в стиле SQLAlchemy с отслеживанием изменений"""
 
     def __init__(
         self,
@@ -538,14 +539,6 @@ class Session:
         mongo_session: AsyncIOMotorClientSession | None = None,
         collection_mapping: dict[type, str] | None = None,
     ) -> None:
-        """
-        Инициализация сессии
-
-        Args:
-            db: AsyncIOMotorDatabase
-            mongo_session: MongoDB session для транзакций (опционально)
-            collection_mapping: Маппинг класс -> имя коллекции
-        """
         self.db = db
         self.mongo_session = mongo_session
         self.collection_mapping = collection_mapping or {}
@@ -553,12 +546,7 @@ class Session:
         self._tracked_instances: list[Any] = []
 
     def add(self, instance: Any) -> Any:
-        """
-        Добавляет экземпляр под отслеживание
-
-        Raises:
-            ClassNotInstrumentedError: Если класс не инструментирован
-        """
+        """Добавляет экземпляр под отслеживание"""
         cls = instance.__class__
 
         if not is_class_instrumented(cls):
@@ -575,7 +563,7 @@ class Session:
         return instance
 
     def _wrap_mutable_fields(self, instance: Any) -> None:
-        """Оборачивает mutable поля в отслеживаемые прокси"""
+        """Оборачивает mutable поля"""
         object.__setattr__(instance, "_session_ref", ref(self))
 
         instance_id = id(instance)
@@ -586,8 +574,9 @@ class Session:
             try:
                 value = getattr(instance, field_name)
 
-                # ✅ Оборачиваем списки
-                if isinstance(value, list) and not isinstance(value, TrackedList):
+                is_list = isinstance(value, list)
+                not_tracked = not isinstance(value, TrackedList)
+                if is_list and not_tracked:
                     tracked_list = TrackedList(
                         value,
                         instance,
@@ -596,26 +585,24 @@ class Session:
                     )
                     object.__setattr__(instance, field_name, tracked_list)
 
-                # ✅ Оборачиваем вложенные объекты
                 elif (
-                        hasattr(value, "__dict__")
-                        and not isinstance(value, TrackedObject)
-                        and is_dataclass(value)
+                    hasattr(value, "__dict__")
+                    and not isinstance(value, TrackedObject)
+                    and is_dataclass(value)
                 ):
-                    # ✅ ВАЖНО: Сохраняем оригинал ДО обертки
                     state = self._instance_states[instance_id]
                     if field_name not in state.original_values:
-                        state.original_values[field_name] = copy.deepcopy(value)
+                        original = copy.deepcopy(value)
+                        state.original_values[field_name] = original
 
                     tracked_obj = TrackedObject(value, instance)
                     object.__setattr__(instance, field_name, tracked_obj)
 
             except (AttributeError, TypeError):
-                # Игнорируем ошибки при обходе полей (property, slots)
                 pass
 
     def _get_collection_name(self, instance: Any) -> str:
-        """Получает имя коллекции для экземпляра"""
+        """Получает имя коллекции"""
         cls = instance.__class__
         collection_name = self.collection_mapping.get(cls)
 
@@ -648,7 +635,7 @@ class Session:
         return value
 
     def build_update_query(self, instance: Any) -> dict[str, Any] | None:
-        """Создает MongoDB update запрос на основе изменений"""
+        """Создает MongoDB update запрос"""
         instance_id = id(instance)
         if instance_id not in self._instance_states:
             return None
@@ -660,9 +647,7 @@ class Session:
             return None
 
         set_operations = {
-            field_name: self._serialize_value(
-                getattr(instance, field_name),
-            )
+            field_name: self._serialize_value(getattr(instance, field_name))
             for field_name in changed_fields
             if field_name != "_id"
         }
@@ -670,18 +655,17 @@ class Session:
         return {"$set": set_operations} if set_operations else None
 
     async def commit(self) -> None:
-        """Сохраняет все изменения в MongoDB и коммитит транзакцию"""
+        """Сохраняет все изменения в MongoDB"""
         if self.db is None:
             raise DatabaseNotSetError
 
         try:
             await self.flush()
 
-            if self.mongo_session and self.mongo_session.in_transaction:
+            if self.mongo_session and self.mongo_session.in_transaction:  # type: ignore[truthy-function]
                 await self.mongo_session.commit_transaction()
         except Exception:
-            # При ошибке откатываем транзакцию
-            if self.mongo_session and self.mongo_session.in_transaction:
+            if self.mongo_session and self.mongo_session.in_transaction:  # type: ignore[truthy-function]
                 await self.mongo_session.abort_transaction()
             raise
 
@@ -697,7 +681,8 @@ class Session:
             return
 
         collection_name = self._get_collection_name(instance)
-        collection: AsyncIOMotorCollection[dict[str, Any]] = self.db[collection_name]
+        coll: AsyncIOMotorCollection[dict[str, Any]]
+        coll = self.db[collection_name]
 
         update_query = self.build_update_query(instance)
         if not update_query:
@@ -707,14 +692,14 @@ class Session:
 
         if doc_id:
             await self._update_document(
-                collection=collection,
+                collection=coll,
                 doc_id=doc_id,
                 update_query=update_query,
                 session=self.mongo_session,
             )
         else:
             await self._insert_document(
-                collection=collection,
+                collection=coll,
                 instance=instance,
                 session=self.mongo_session,
             )
@@ -755,8 +740,6 @@ class Session:
         """Вставляет новый документ"""
         doc_data = self._serialize_value(instance)
 
-        # Если _id нет или None, MongoDB сам сгенерирует
-        # Удаляем None значение, чтобы MongoDB создал свой ID
         if "_id" in doc_data and doc_data["_id"] is None:
             del doc_data["_id"]
 
@@ -765,11 +748,10 @@ class Session:
         else:
             result = await collection.insert_one(doc_data)
 
-        # Присваиваем ID от MongoDB
         object.__setattr__(instance, "_id", result.inserted_id)
 
     async def flush(self) -> None:
-        """Сохраняет изменения в БД без коммита транзакции"""
+        """Сохраняет изменения в БД"""
         if self.db is None:
             raise DatabaseNotSetError
 
@@ -778,12 +760,10 @@ class Session:
 
     async def rollback(self) -> None:
         """Откатывает изменения"""
-        # Откатываем изменения в объектах
         for instance in self._tracked_instances:
             self._rollback_instance(instance)
 
-        # Откатываем MongoDB транзакцию если она есть
-        if self.mongo_session and self.mongo_session.in_transaction:
+        if self.mongo_session and self.mongo_session.in_transaction:  # type: ignore[truthy-function]
             await self.mongo_session.abort_transaction()
 
     def _rollback_instance(self, instance: Any) -> None:
@@ -816,135 +796,3 @@ class Session:
             if instance_id in self._instance_states:
                 del self._instance_states[instance_id]
         self._tracked_instances.clear()
-
-
-# ============= Примеры использования =============
-
-
-@dataclass
-class Tag:
-    title: str
-
-    def __repr__(self) -> str:
-        return f"Tag({self.title})"
-
-
-@dataclass
-class User:
-    username: str
-    email: str
-    tags: list[Tag] = field(default_factory=list)
-    _id: str | None = None
-
-
-@dataclass
-class Article:
-    title: str
-    content: str
-    _id: str | None = None
-
-
-# Инструментируем классы перед использованием
-instrument_class(Tag)
-instrument_class(User)
-instrument_class(Article)
-
-
-async def example_with_transaction() -> None:
-    """Пример использования с транзакцией MongoDB"""
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
-        "mongodb://localhost:27017",
-    )
-    db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
-
-    async with (
-        await client.start_session() as mongo_session,
-        mongo_session.start_transaction(),
-    ):
-        session = Session(
-            db=db,
-            mongo_session=mongo_session,
-            collection_mapping={
-                User: "users",
-                Article: "blog_articles",
-            },
-        )
-
-        try:
-            user = User(
-                username="john",
-                email="john@example.com",
-                tags=[Tag("python")],
-                _id="507f1f77bcf86cd799439011",
-            )
-
-            session.add(user)
-            user.username = "john_doe"
-            user.tags.append(Tag("mongodb"))
-
-            await session.commit()
-        finally:
-            session.close()
-
-    client.close()
-
-
-async def example_simple_request() -> None:
-    """Пример для одного API запроса без транзакции"""
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
-        "mongodb://localhost:27017",
-    )
-    db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
-
-    session = Session(
-        db=db,
-        collection_mapping={User: "users"},
-    )
-
-    try:
-        user = User(username="alice", email="alice@example.com")
-
-        session.add(user)
-        user.tags.append(Tag("python"))
-        user.tags[0].title = "python3"
-
-        await session.commit()
-    finally:
-        session.close()
-
-    client.close()
-
-
-async def example_uninstrumented_class() -> None:
-    """Пример ошибки при использовании неинструментированного класса"""
-
-    @dataclass
-    class UninstrumentedUser:
-        username: str
-
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
-        "mongodb://localhost:27017",
-    )
-    db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
-
-    session = Session(
-        db=db,
-        collection_mapping={UninstrumentedUser: "users"},
-    )
-
-    try:
-        user = UninstrumentedUser(username="test")
-        session.add(user)  # Вызовет ClassNotInstrumentedError
-    except ClassNotInstrumentedError as e:
-        print(f"Error: {e}")
-    finally:
-        session.close()
-        client.close()
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(example_simple_request())
-    asyncio.run(example_with_transaction())
-    asyncio.run(example_uninstrumented_class())
