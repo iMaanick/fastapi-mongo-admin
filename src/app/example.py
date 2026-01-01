@@ -47,7 +47,7 @@ class InstanceState:
         return self.original_values.get(field_name)
 
 
-class TrackedList(list):
+class TrackedList(list):  # type: ignore[type-arg]
     """Список с отслеживанием изменений"""
 
     def __init__(
@@ -508,7 +508,7 @@ def instrument_class(cls: type) -> None:  # noqa: C901
             if session is not None:
                 states = session._instance_states  # noqa: SLF001
                 if instance_id in states:
-                    return states[instance_id].get_changed_fields()
+                    return states[instance_id].get_changed_fields() # type: ignore[no-any-return]
         return set()
 
     def get_original_value(self: Any, field_name: str) -> Any:
