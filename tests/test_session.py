@@ -1,4 +1,6 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -12,7 +14,7 @@ from app.example import Session
 class Tag:
     title: str
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Tag({self.title})"
 
 
@@ -21,7 +23,7 @@ class NestedTag:
     name: str
     level: int = 1
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"NestedTag({self.name}, level={self.level})"
 
 
@@ -30,7 +32,7 @@ class DeepTag:
     title: str
     nested: NestedTag | None = None
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"DeepTag({self.title}, nested={self.nested})"
 
 
@@ -39,7 +41,7 @@ class User:
     username: str
     email: str
     tags: list[Tag] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     _id: str | None = None
 
 
@@ -54,7 +56,7 @@ class ComplexUser:
 
 
 @pytest.fixture
-def mock_db():
+def mock_db() -> Mock:
     """Мок MongoDB базы данных"""
     db = Mock()
     # Мокаем коллекции
@@ -63,7 +65,7 @@ def mock_db():
 
 
 @pytest.fixture
-def session(mock_db):
+def session(mock_db: Mock) -> Any:
     """Создает новую сессию для каждого теста"""
     s = Session(db=mock_db)
     yield s
@@ -71,21 +73,23 @@ def session(mock_db):
 
 
 @pytest.fixture
-def simple_user():
+def simple_user() -> User:
     """Простой пользователь без списков"""
     return User(username="john", email="john@example.com")
 
 
 @pytest.fixture
-def user_with_tags():
+def user_with_tags() -> User:
     """Пользователь с тегами"""
     return User(
-        username="alice", email="alice@example.com", tags=[Tag("python"), Tag("django")],
+        username="alice",
+        email="alice@example.com",
+        tags=[Tag("python"), Tag("django")],
     )
 
 
 @pytest.fixture
-def complex_user():
+def complex_user() -> ComplexUser:
     """Пользователь с глубоко вложенными объектами"""
     return ComplexUser(
         username="bob",
@@ -102,12 +106,20 @@ def complex_user():
 class TestBasicTracking:
     """Тесты базового отслеживания изменений"""
 
-    def test_no_changes_initially(self, session, simple_user):
+    def test_no_changes_initially(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Новый объект не должен иметь изменений"""
         session.add(simple_user)
         assert simple_user.get_changed_fields() == set()
 
-    def test_track_single_field_change(self, session, simple_user):
+    def test_track_single_field_change(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Отслеживание изменения одного поля"""
         session.add(simple_user)
         simple_user.username = "jane"
@@ -115,7 +127,11 @@ class TestBasicTracking:
         assert simple_user.get_changed_fields() == {"username"}
         assert simple_user.get_original_value("username") == "john"
 
-    def test_track_multiple_field_changes(self, session, simple_user):
+    def test_track_multiple_field_changes(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Отслеживание изменений нескольких полей"""
         session.add(simple_user)
         simple_user.username = "jane"
@@ -125,8 +141,12 @@ class TestBasicTracking:
         assert simple_user.get_original_value("username") == "john"
         assert simple_user.get_original_value("email") == "john@example.com"
 
-    def test_track_same_field_multiple_times(self, session, simple_user):
-        """Изменение одного поля несколько раз - сохраняется первое значение"""
+    def test_track_same_field_multiple_times(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
+        """Изменение одного поля несколько раз"""
         session.add(simple_user)
         original = simple_user.username
 
@@ -137,7 +157,10 @@ class TestBasicTracking:
         assert simple_user.get_changed_fields() == {"username"}
         assert simple_user.get_original_value("username") == original
 
-    def test_untracked_object_has_no_changes(self, simple_user):
+    def test_untracked_object_has_no_changes(
+        self,
+        simple_user: User,
+    ) -> None:
         """Объект не в сессии не отслеживается"""
         simple_user.username = "changed"
         assert simple_user.get_changed_fields() == set()
@@ -147,7 +170,11 @@ class TestBasicTracking:
 class TestListTracking:
     """Тесты отслеживания изменений в списках"""
 
-    def test_list_append(self, session, user_with_tags):
+    def test_list_append(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Добавление элемента в список"""
         session.add(user_with_tags)
         user_with_tags.tags.append(Tag("flask"))
@@ -156,7 +183,11 @@ class TestListTracking:
         assert len(user_with_tags.get_original_value("tags")) == 2
         assert len(user_with_tags.tags) == 3
 
-    def test_list_remove(self, session, user_with_tags):
+    def test_list_remove(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Удаление элемента из списка"""
         session.add(user_with_tags)
         original_tags = user_with_tags.get_original_value("tags")
@@ -168,7 +199,11 @@ class TestListTracking:
         # Оригинальное значение не должно измениться
         assert len(original_tags) == 2
 
-    def test_list_extend(self, session, user_with_tags):
+    def test_list_extend(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Расширение списка"""
         session.add(user_with_tags)
         user_with_tags.tags.extend([Tag("fastapi"), Tag("asyncio")])
@@ -176,7 +211,11 @@ class TestListTracking:
         assert "tags" in user_with_tags.get_changed_fields()
         assert len(user_with_tags.tags) == 4
 
-    def test_list_insert(self, session, user_with_tags):
+    def test_list_insert(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Вставка элемента в список"""
         session.add(user_with_tags)
         user_with_tags.tags.insert(0, Tag("first"))
@@ -184,7 +223,11 @@ class TestListTracking:
         assert "tags" in user_with_tags.get_changed_fields()
         assert user_with_tags.tags[0].title == "first"
 
-    def test_list_clear(self, session, user_with_tags):
+    def test_list_clear(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Очистка списка"""
         session.add(user_with_tags)
         user_with_tags.tags.clear()
@@ -193,7 +236,11 @@ class TestListTracking:
         assert len(user_with_tags.tags) == 0
         assert len(user_with_tags.get_original_value("tags")) == 2
 
-    def test_list_setitem(self, session, user_with_tags):
+    def test_list_setitem(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Замена элемента по индексу"""
         session.add(user_with_tags)
         user_with_tags.tags[0] = Tag("replaced")
@@ -201,7 +248,11 @@ class TestListTracking:
         assert "tags" in user_with_tags.get_changed_fields()
         assert user_with_tags.tags[0].title == "replaced"
 
-    def test_list_delitem(self, session, user_with_tags):
+    def test_list_delitem(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Удаление элемента по индексу"""
         session.add(user_with_tags)
         del user_with_tags.tags[0]
@@ -209,7 +260,11 @@ class TestListTracking:
         assert "tags" in user_with_tags.get_changed_fields()
         assert len(user_with_tags.tags) == 1
 
-    def test_empty_list_append(self, session, simple_user):
+    def test_empty_list_append(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Добавление в пустой список"""
         session.add(simple_user)
         simple_user.tags.append(Tag("first"))
@@ -221,7 +276,11 @@ class TestListTracking:
 class TestNestedObjectTracking:
     """Тесты отслеживания изменений вложенных объектов"""
 
-    def test_nested_object_field_change(self, session, user_with_tags):
+    def test_nested_object_field_change(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Изменение поля вложенного объекта в списке"""
         session.add(user_with_tags)
         user_with_tags.tags[0].title = "modified"
@@ -230,23 +289,31 @@ class TestNestedObjectTracking:
         original = user_with_tags.get_original_value("tags")
         assert original[0].title == "python"
 
-    def test_deeply_nested_object_change(self, session, complex_user):
+    def test_deeply_nested_object_change(
+        self,
+        session: Any,
+        complex_user: ComplexUser,
+    ) -> None:
         """Изменение глубоко вложенного объекта"""
         session.add(complex_user)
-        complex_user.tags[0].nested.name = "modified_api"
+        complex_user.tags[0].nested.name = "modified_api"  # type: ignore[union-attr]
 
         assert "tags" in complex_user.get_changed_fields()
         original = complex_user.get_original_value("tags")
         assert original[0].nested.name == "api"
 
-    def test_multiple_nesting_levels(self, session, complex_user):
+    def test_multiple_nesting_levels(
+        self,
+        session: Any,
+        complex_user: ComplexUser,
+    ) -> None:
         """Изменения на разных уровнях вложенности"""
         session.add(complex_user)
 
         # Меняем на разных уровнях
         complex_user.tags[0].title = "new_backend"
-        complex_user.tags[0].nested.name = "new_api"
-        complex_user.tags[0].nested.level = 99
+        complex_user.tags[0].nested.name = "new_api"  # type: ignore[union-attr]
+        complex_user.tags[0].nested.level = 99  # type: ignore[union-attr]
 
         assert "tags" in complex_user.get_changed_fields()
         original = complex_user.get_original_value("tags")
@@ -258,13 +325,13 @@ class TestNestedObjectTracking:
 class TestEdgeCases:
     """Тесты граничных случаев"""
 
-    def test_none_values(self, session):
+    def test_none_values(self, session: Any) -> None:
         """Работа с None значениями"""
 
         @dataclass
         class NullableUser:
             username: str | None = None
-            tags: list | None = None
+            tags: list[Any] | None = None
 
         user = NullableUser()
         session.add(user)
@@ -273,7 +340,7 @@ class TestEdgeCases:
         assert "username" in user.get_changed_fields()
         assert user.get_original_value("username") is None
 
-    def test_empty_strings(self, session):
+    def test_empty_strings(self, session: Any) -> None:
         """Работа с пустыми строками"""
         user = User(username="", email="")
         session.add(user)
@@ -281,7 +348,11 @@ class TestEdgeCases:
         user.username = "john"
         assert user.get_original_value("username") == ""
 
-    def test_special_characters(self, session, simple_user):
+    def test_special_characters(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Работа со специальными символами"""
         session.add(simple_user)
         simple_user.username = "user@#$%^&*()"
@@ -289,7 +360,11 @@ class TestEdgeCases:
 
         assert simple_user.get_changed_fields() == {"username", "email"}
 
-    def test_unicode_characters(self, session, simple_user):
+    def test_unicode_characters(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Работа с Unicode символами"""
         session.add(simple_user)
         simple_user.username = "用户名"
@@ -297,7 +372,11 @@ class TestEdgeCases:
 
         assert simple_user.get_changed_fields() == {"username", "email"}
 
-    def test_very_long_strings(self, session, simple_user):
+    def test_very_long_strings(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Работа с очень длинными строками"""
         session.add(simple_user)
         long_string = "a" * 10000
@@ -306,13 +385,13 @@ class TestEdgeCases:
         assert simple_user.get_original_value("username") == "john"
         assert len(simple_user.username) == 10000
 
-    def test_circular_reference_in_list(self, session):
+    def test_circular_reference_in_list(self, session: Any) -> None:
         """Список с циклическими ссылками"""
 
         @dataclass
         class Node:
             name: str
-            children: list = field(default_factory=list)
+            children: list[Any] = field(default_factory=list)
 
         root = Node("root")
         child = Node("child")
@@ -323,7 +402,7 @@ class TestEdgeCases:
 
         assert "children" in root.get_changed_fields()
 
-    def test_large_list(self, session, simple_user):
+    def test_large_list(self, session: Any, simple_user: User) -> None:
         """Работа с большим списком"""
         session.add(simple_user)
         large_list = [Tag(f"tag_{i}") for i in range(1000)]
@@ -331,7 +410,11 @@ class TestEdgeCases:
 
         assert "tags" in simple_user.get_changed_fields()
 
-    def test_same_value_assignment(self, session, simple_user):
+    def test_same_value_assignment(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Присвоение того же значения должно отслеживаться"""
         session.add(simple_user)
         original = simple_user.username
@@ -340,7 +423,7 @@ class TestEdgeCases:
         # Всё равно считается изменением
         assert "username" in simple_user.get_changed_fields()
 
-    def test_boolean_fields(self, session):
+    def test_boolean_fields(self, session: Any) -> None:
         """Работа с булевыми полями"""
 
         @dataclass
@@ -355,7 +438,7 @@ class TestEdgeCases:
         assert "is_active" in user.get_changed_fields()
         assert user.get_original_value("is_active") is False
 
-    def test_numeric_fields(self, session):
+    def test_numeric_fields(self, session: Any) -> None:
         """Работа с числовыми полями"""
 
         @dataclass
@@ -377,7 +460,7 @@ class TestEdgeCases:
 class TestMultipleInstances:
     """Тесты с несколькими экземплярами"""
 
-    def test_multiple_instances_independent(self, session):
+    def test_multiple_instances_independent(self, session: Any) -> None:
         """Изменения в разных экземплярах независимы"""
         user1 = User(username="alice", email="alice@example.com")
         user2 = User(username="bob", email="bob@example.com")
@@ -390,10 +473,14 @@ class TestMultipleInstances:
         assert "username" in user1.get_changed_fields()
         assert "username" not in user2.get_changed_fields()
 
-    def test_same_class_multiple_instances(self, session):
+    def test_same_class_multiple_instances(self, session: Any) -> None:
         """Несколько экземпляров одного класса"""
         users = [
-            User(username=f"user{i}", email=f"user{i}@example.com") for i in range(5)
+            User(
+                username=f"user{i}",
+                email=f"user{i}@example.com",
+            )
+            for i in range(5)
         ]
 
         for user in users:
@@ -412,7 +499,7 @@ class TestMultipleInstances:
 class TestMultipleSessions:
     """Тесты с несколькими сессиями"""
 
-    def test_sessions_are_isolated(self, mock_db):
+    def test_sessions_are_isolated(self, mock_db: Mock) -> None:
         """Две сессии должны быть изолированы друг от друга"""
         session1 = Session(db=mock_db)
         session2 = Session(db=mock_db)
@@ -436,7 +523,7 @@ class TestMultipleSessions:
             session1.close()
             session2.close()
 
-    def test_object_in_multiple_sessions(self, mock_db):
+    def test_object_in_multiple_sessions(self, mock_db: Mock) -> None:
         """Один объект может быть добавлен в разные сессии"""
         session1 = Session(db=mock_db)
         session2 = Session(db=mock_db)
@@ -461,7 +548,11 @@ class TestMultipleSessions:
 class TestBuildUpdateQuery:
     """Тесты генерации MongoDB запросов"""
 
-    def test_simple_field_update(self, session, simple_user):
+    def test_simple_field_update(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Генерация запроса для простого изменения"""
         session.add(simple_user)
         simple_user.username = "jane"
@@ -469,7 +560,11 @@ class TestBuildUpdateQuery:
         query = session.build_update_query(simple_user)
         assert query == {"$set": {"username": "jane"}}
 
-    def test_multiple_fields_update(self, session, simple_user):
+    def test_multiple_fields_update(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Генерация запроса для нескольких полей"""
         session.add(simple_user)
         simple_user.username = "jane"
@@ -480,7 +575,11 @@ class TestBuildUpdateQuery:
         assert query["$set"]["username"] == "jane"
         assert query["$set"]["email"] == "jane@example.com"
 
-    def test_list_update(self, session, user_with_tags):
+    def test_list_update(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Генерация запроса при изменении списка"""
         session.add(user_with_tags)
         user_with_tags.tags.append(Tag("new"))
@@ -491,10 +590,14 @@ class TestBuildUpdateQuery:
         assert len(query["$set"]["tags"]) == 3
         assert query["$set"]["tags"][-1] == {"title": "new"}
 
-    def test_nested_object_serialization(self, session, complex_user):
+    def test_nested_object_serialization(
+        self,
+        session: Any,
+        complex_user: ComplexUser,
+    ) -> None:
         """Сериализация вложенных объектов"""
         session.add(complex_user)
-        complex_user.tags[0].nested.name = "modified"
+        complex_user.tags[0].nested.name = "modified"  # type: ignore[union-attr]
 
         query = session.build_update_query(complex_user)
         assert "$set" in query
@@ -506,17 +609,21 @@ class TestBuildUpdateQuery:
         assert first_tag["nested"]["name"] == "modified"
         assert first_tag["nested"]["level"] == 1
 
-    def test_no_changes_no_query(self, session, simple_user):
+    def test_no_changes_no_query(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Нет изменений - нет запроса"""
         session.add(simple_user)
         query = session.build_update_query(simple_user)
         assert query is None
 
-    def test_id_field_excluded(self, session):
+    def test_id_field_excluded(self, session: Any) -> None:
         """Поле _id исключается из update"""
         user = User(username="john", email="john@example.com", _id="123")
         session.add(user)
-        user._id = "456"  # Не должно попасть в запрос
+        user._id = "456"  # noqa: SLF001
         user.username = "jane"
 
         query = session.build_update_query(user)
@@ -527,13 +634,21 @@ class TestBuildUpdateQuery:
 class TestTrackedObjectProxy:
     """Тесты TrackedObject прокси"""
 
-    def test_tracked_object_repr(self, session, user_with_tags):
+    def test_tracked_object_repr(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """TrackedObject должен корректно работать с __repr__"""
         session.add(user_with_tags)
         tag = user_with_tags.tags[0]
         assert "Tag(python)" in repr(tag)
 
-    def test_tracked_object_equality(self, session, user_with_tags):
+    def test_tracked_object_equality(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """TrackedObject должен поддерживать сравнение"""
         session.add(user_with_tags)
         tag1 = user_with_tags.tags[0]
@@ -542,7 +657,11 @@ class TestTrackedObjectProxy:
         # Должны быть равны по содержимому
         assert tag1.title == tag2.title
 
-    def test_tracked_object_attribute_access(self, session, user_with_tags):
+    def test_tracked_object_attribute_access(
+        self,
+        session: Any,
+        user_with_tags: User,
+    ) -> None:
         """Доступ к атрибутам TrackedObject"""
         session.add(user_with_tags)
         tag = user_with_tags.tags[0]
@@ -559,8 +678,8 @@ class ChangeTestCase:
     """Тестовый случай для проверки изменений"""
 
     id: str
-    setup: callable
-    expected_fields: set
+    setup: Callable[[User], Any]
+    expected_fields: set[str]
     description: str
 
 
@@ -590,9 +709,14 @@ CHANGE_TEST_CASES = [
 
 
 @pytest.mark.parametrize(
-    "test_case", [pytest.param(tc, id=tc.id) for tc in CHANGE_TEST_CASES],
+    "test_case",
+    [pytest.param(tc, id=tc.id) for tc in CHANGE_TEST_CASES],
 )
-def test_parametrized_changes(session, user_with_tags, test_case: ChangeTestCase):
+def test_parametrized_changes(
+    session: Any,
+    user_with_tags: User,
+    test_case: ChangeTestCase,
+) -> None:
     """Параметризованный тест различных изменений"""
     session.add(user_with_tags)
     test_case.setup(user_with_tags)
@@ -603,9 +727,13 @@ def test_parametrized_changes(session, user_with_tags, test_case: ChangeTestCase
 
 
 class TestPerformance:
-    """Тесты производительности (не строгие, для выявления проблем)"""
+    """Тесты производительности"""
 
-    def test_many_field_changes(self, session, simple_user):
+    def test_many_field_changes(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Много изменений одного поля"""
         session.add(simple_user)
 
@@ -615,7 +743,11 @@ class TestPerformance:
         assert "username" in simple_user.get_changed_fields()
         assert simple_user.get_original_value("username") == "john"
 
-    def test_many_list_operations(self, session, simple_user):
+    def test_many_list_operations(
+        self,
+        session: Any,
+        simple_user: User,
+    ) -> None:
         """Много операций со списком"""
         session.add(simple_user)
 

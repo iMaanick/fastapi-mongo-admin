@@ -251,7 +251,11 @@ class Session:
                 session = session_ref()
                 if session is not None:
                     session_states = session._instance_states  # noqa: SLF001
-                    if instance_id in session_states and not name.startswith("_"):
+                    if (
+                            instance_id in session_states
+                            and
+                            not name.startswith("_")
+                    ):
                         state = session_states[instance_id]
 
                         if hasattr(instance, name):
@@ -291,7 +295,7 @@ class Session:
                     and instance_id in session._instance_states  # noqa: SLF001
                 ):
                     states: dict[int, InstanceState] = (
-                        session._instance_states
+                        session._instance_states   # noqa: SLF001
                     )
                     return states[instance_id].get_changed_fields()
             return set()
@@ -313,7 +317,7 @@ class Session:
                     and instance_id in session._instance_states  # noqa: SLF001
                 ):
                     states: dict[int, InstanceState] = (
-                        session._instance_states
+                        session._instance_states   # noqa: SLF001
                     )
                     return states[instance_id].get_original_value(field_name)
             return None
@@ -395,7 +399,9 @@ class Session:
             return
 
         collection_name = self._get_collection_name(instance)
-        collection: AsyncIOMotorCollection[dict[str, Any]] = self.db[collection_name]
+        collection: AsyncIOMotorCollection[dict[str, Any]] = self.db[
+            collection_name
+        ]
 
         update_query = self.build_update_query(instance)
         if not update_query:
