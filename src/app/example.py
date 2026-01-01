@@ -23,9 +23,13 @@ class InstanceState:
     def mark_changed(self, field_name: str, original_value: Any) -> None:
         if field_name not in self.changed_fields:
             if isinstance(original_value, list | dict):
-                self.original_values[field_name] = copy.deepcopy(
-                    original_value,
-                )
+                if hasattr(original_value, "_unwrap_for_copy"):
+                    # ✅ _unwrap_for_copy уже возвращает копию
+                    self.original_values[field_name] = original_value._unwrap_for_copy(
+                        original_value
+                    )
+                else:
+                    self.original_values[field_name] = copy.deepcopy(original_value)
             else:
                 self.original_values[field_name] = original_value
         self.changed_fields.add(field_name)
@@ -46,20 +50,77 @@ class TrackedList(list[Any]):
         instance: Any,
         field_name: str,
         session_instance_states: dict[int, InstanceState],
+        is_nested: bool = False,
     ) -> None:
-        super().__init__(data)
+        # Обрабатываем вложенные списки рекурсивно
+        processed_data = self._wrap_nested_lists(
+            data,
+            instance,
+            field_name,
+            session_instance_states,
+        )
+        super().__init__(processed_data)
         self._instance_id = id(instance)
         self._field_name = field_name
         self._session_instance_states = session_instance_states
-        self._mark_initial_state()
+        self._is_nested = is_nested
+
+        # ✅ Оборачиваем объекты ПОСЛЕ создания списка
+        self._wrap_objects_in_list()
+
+        # ✅ Сохраняем ТОЛЬКО для корневого списка
+        if not is_nested:
+            self._mark_initial_state()
+
+    @staticmethod
+    def _wrap_nested_lists(
+        data: list[Any],
+        instance: Any,
+        field_name: str,
+        session_instance_states: dict[int, InstanceState],
+    ) -> list[Any]:
+        """Рекурсивно оборачивает вложенные списки"""
+        result = []
+        for item in data:
+            if isinstance(item, list) and not isinstance(item, TrackedList):
+                result.append(
+                    TrackedList(
+                        item,
+                        instance,
+                        field_name,
+                        session_instance_states,
+                        is_nested=True,
+                    )
+                )
+            else:
+                result.append(item)
+        return result
+
+    def _wrap_objects_in_list(self) -> None:
+        """Оборачивает объекты в TrackedObject после создания списка"""
+        for i, item in enumerate(self):
+            if isinstance(item, (TrackedObject, TrackedList)):
+                continue
+            if hasattr(item, "__dict__") and not isinstance(item, list):
+                super().__setitem__(i, TrackedObject(item, self))
 
     def _mark_initial_state(self) -> None:
         if self._instance_id in self._session_instance_states:
             state = self._session_instance_states[self._instance_id]
             if self._field_name not in state.original_values:
-                state.original_values[self._field_name] = copy.deepcopy(
-                    list(self),
-                )
+                state.original_values[self._field_name] = self._unwrap_for_copy(self)
+
+    def _unwrap_for_copy(self, data: Any) -> Any:
+        """Разворачивает TrackedList/TrackedObject и возвращает глубокую копию"""
+        if isinstance(data, TrackedList):
+            return [self._unwrap_for_copy(item) for item in data]
+        elif isinstance(data, TrackedObject):
+            obj = object.__getattribute__(data, "_obj")
+            return copy.deepcopy(obj)
+        elif isinstance(data, list):
+            return [self._unwrap_for_copy(item) for item in data]
+        else:
+            return copy.copy(data) if hasattr(data, "__dict__") else data
 
     def _mark_changed(self) -> None:
         if self._instance_id in self._session_instance_states:
@@ -68,14 +129,50 @@ class TrackedList(list[Any]):
 
     def append(self, item: Any) -> None:
         self._mark_changed()
+        if isinstance(item, list) and not isinstance(item, TrackedList):
+            item = TrackedList(
+                item,
+                self._get_root_instance(),
+                self._field_name,
+                self._session_instance_states,
+                is_nested=True,
+            )
+        elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+            item = TrackedObject(item, self)
         super().append(item)
 
     def extend(self, items: Any) -> None:
         self._mark_changed()
-        super().extend(items)
+        wrapped_items = []
+        for item in items:
+            if isinstance(item, list) and not isinstance(item, TrackedList):
+                wrapped_items.append(
+                    TrackedList(
+                        item,
+                        self._get_root_instance(),
+                        self._field_name,
+                        self._session_instance_states,
+                        is_nested=True,
+                    )
+                )
+            elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+                wrapped_items.append(TrackedObject(item, self))
+            else:
+                wrapped_items.append(item)
+        super().extend(wrapped_items)
 
     def insert(self, index: SupportsIndex, item: Any) -> None:
         self._mark_changed()
+        if isinstance(item, list) and not isinstance(item, TrackedList):
+            item = TrackedList(
+                item,
+                self._get_root_instance(),
+                self._field_name,
+                self._session_instance_states,
+                is_nested=True,
+            )
+        elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
+            item = TrackedObject(item, self)
         super().insert(index, item)
 
     def remove(self, item: Any) -> None:
@@ -92,6 +189,16 @@ class TrackedList(list[Any]):
 
     def __setitem__(self, key: Any, value: Any) -> None:
         self._mark_changed()
+        if isinstance(value, list) and not isinstance(value, TrackedList):
+            value = TrackedList(
+                value,
+                self._get_root_instance(),
+                self._field_name,
+                self._session_instance_states,
+                is_nested=True,
+            )
+        elif hasattr(value, "__dict__") and not isinstance(value, TrackedObject):
+            value = TrackedObject(value, self)
         super().__setitem__(key, value)
 
     def __delitem__(self, key: Any) -> None:
@@ -100,14 +207,38 @@ class TrackedList(list[Any]):
 
     def __getitem__(self, key: Any) -> Any:
         item = super().__getitem__(key)
-        if hasattr(item, "__dict__") and not isinstance(
-            item,
-            TrackedObject,
-        ):
+
+        if isinstance(item, (TrackedList, TrackedObject)):
+            return item
+
+        if isinstance(item, list):
+            tracked_item = TrackedList(
+                item,
+                self._get_root_instance(),
+                self._field_name,
+                self._session_instance_states,
+                is_nested=True,
+            )
+            super().__setitem__(key, tracked_item)
+            return tracked_item
+
+        if hasattr(item, "__dict__") and not isinstance(item, list):
             tracked_item = TrackedObject(item, self)
             super().__setitem__(key, tracked_item)
             return tracked_item
+
         return item
+
+    def _get_root_instance(self) -> Any:
+        """Получает корневой instance для вложенных списков"""
+        current = self
+        while isinstance(current, TrackedList):
+            if current._instance_id in current._session_instance_states:
+                state = current._session_instance_states[current._instance_id]
+                if state.instance_ref() is not None:
+                    return state.instance_ref()
+            break
+        return None
 
 
 class TrackedObject:
@@ -121,13 +252,39 @@ class TrackedObject:
         obj = object.__getattribute__(self, "_obj")
         value = getattr(obj, name)
 
-        if hasattr(value, "__dict__") and not isinstance(
-            value,
-            TrackedObject,
-        ):
+        # ✅ Оборачиваем вложенные объекты
+        if hasattr(value, "__dict__") and not isinstance(value, TrackedObject):
             return TrackedObject(value, self)
 
+        # ✅ Оборачиваем списки в TrackedList
+        if isinstance(value, list) and not isinstance(value, TrackedList):
+            root_instance = self._get_root_instance()
+            field_name = self._get_root_field_name()
+
+            if root_instance is not None:
+                session_ref = getattr(root_instance, "_session_ref", None)
+                if session_ref is not None:
+                    session = session_ref()
+                    if session is not None:
+                        tracked_list = TrackedList(
+                            value,
+                            root_instance,
+                            field_name,
+                            session._instance_states,
+                            is_nested=True,
+                        )
+                        # ✅ Сохраняем TrackedList в объекте
+                        setattr(obj, name, tracked_list)
+                        return tracked_list
+
         return value
+
+    def __getitem__(self, key: Any) -> Any:
+        """Поддержка индексации если объект поддерживает []"""
+        obj = object.__getattribute__(self, "_obj")
+        if hasattr(obj, "__getitem__"):
+            return obj[key]
+        raise TypeError(f"'{type(obj).__name__}' object is not subscriptable")
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name.startswith("_"):
@@ -149,6 +306,34 @@ class TrackedObject:
     def __repr__(self) -> str:
         obj = object.__getattribute__(self, "_obj")
         return repr(obj)
+
+    @property
+    def __class__(self) -> type:
+        """Возвращает класс оригинального объекта"""
+        obj = object.__getattribute__(self, "_obj")
+        return obj.__class__
+
+    def _get_root_instance(self) -> Any:
+        """Получает корневой instance"""
+        parent = object.__getattribute__(self, "_parent")
+
+        if isinstance(parent, TrackedList):
+            return parent._get_root_instance()
+        elif isinstance(parent, TrackedObject):
+            return parent._get_root_instance()
+
+        return None
+
+    def _get_root_field_name(self) -> str:
+        """Получает имя поля корневого списка"""
+        parent = object.__getattribute__(self, "_parent")
+
+        if isinstance(parent, TrackedList):
+            return parent._field_name
+        elif isinstance(parent, TrackedObject):
+            return parent._get_root_field_name()
+
+        return ""
 
 
 # ============= Исключения =============

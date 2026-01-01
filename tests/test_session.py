@@ -1,3 +1,4 @@
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -6,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.example import Session, instrument_class
+
 
 # ============= Тестовые модели =============
 
@@ -795,6 +797,666 @@ class TestPerformance:
 
         assert len(simple_user.tags) == 100
         assert len(simple_user.get_original_value("tags")) == 0
+
+
+
+
+class TestNestedLists:
+    """Тесты вложенных списков произвольной глубины"""
+
+    def test_simple_nested_list(self, session: Any, simple_user: User) -> None:
+        """Простой вложенный список"""
+        session.add(simple_user)
+        simple_user.tags = [Tag("python"), ["nested", "list"]]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags) == 2
+        assert simple_user.tags[1] == ["nested", "list"]
+
+    def test_nested_list_append(self, session: Any, simple_user: User) -> None:
+        """Добавление в вложенный список"""
+        session.add(simple_user)
+        simple_user.tags = [Tag("python"), ["nested"]]
+
+        # Очищаем changed_fields для чистоты теста
+        simple_user.get_changed_fields()
+        original_tags = len(simple_user.get_original_value("tags"))
+
+        # Добавляем в вложенный список
+        simple_user.tags[1].append("new_item")
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[1] == ["nested", "new_item"]
+
+    def test_deeply_nested_lists(self, session: Any, simple_user: User) -> None:
+        """Глубоко вложенные списки (3 уровня)"""
+        session.add(simple_user)
+        simple_user.tags = [
+            Tag("python"),
+            ["level1", ["level2", ["level3"]]],
+        ]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[1][1][1] == ["level3"]
+
+    def test_nested_list_modification_deep(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Изменение глубоко вложенного списка"""
+        session.add(simple_user)
+        simple_user.tags = [["level1", ["level2", ["level3"]]]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        # Изменяем на 3-м уровне
+        simple_user.tags[0][1][1].append("deep_item")
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert "deep_item" in simple_user.tags[0][1][1]
+
+    def test_nested_list_with_objects(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Вложенный список с объектами"""
+        session.add(simple_user)
+        simple_user.tags = [Tag("python"), ["nested", Tag("javascript")]]
+
+        assert "tags" in simple_user.get_changed_fields()
+        # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
+        assert hasattr(simple_user.tags[0], 'title')
+        assert simple_user.tags[0].title == "python"
+        assert isinstance(simple_user.tags[1], list)
+        assert isinstance(simple_user.tags[1][1], Tag)
+
+    def test_nested_list_object_modification(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Изменение объекта в вложенном списке"""
+        session.add(simple_user)
+        simple_user.tags = [Tag("python"), ["nested", Tag("js")]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        # Изменяем объект во вложенном списке
+        simple_user.tags[1][1].title = "javascript"
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[1][1].title == "javascript"
+
+    def test_multiple_nested_levels_mixed(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Смешанные типы на разных уровнях вложенности"""
+        session.add(simple_user)
+        simple_user.tags = [
+            Tag("python"),
+            ["string", Tag("js"), ["deep", Tag("ts")]],
+        ]
+
+        assert "tags" in simple_user.get_changed_fields()
+        # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
+        assert hasattr(simple_user.tags[0], 'title')
+        assert simple_user.tags[0].title == "python"
+        assert isinstance(simple_user.tags[1][1], Tag)
+        assert isinstance(simple_user.tags[1][2][1], Tag)
+
+    def test_nested_list_clear(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Очистка вложенного списка"""
+        session.add(simple_user)
+        simple_user.tags = [Tag("python"), ["item1", "item2"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        # Очищаем вложенный список
+        simple_user.tags[1].clear()
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags[1]) == 0
+
+    def test_nested_list_pop(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Pop из вложенного списка"""
+        session.add(simple_user)
+        simple_user.tags = [["item1", "item2", "item3"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        popped = simple_user.tags[0].pop()
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert popped == "item3"
+        assert len(simple_user.tags[0]) == 2
+
+    def test_nested_list_remove(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Remove из вложенного списка"""
+        session.add(simple_user)
+        simple_user.tags = [["item1", "item2", "item3"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        simple_user.tags[0].remove("item2")
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert "item2" not in simple_user.tags[0]
+
+    def test_nested_list_insert(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Insert в вложенный список"""
+        session.add(simple_user)
+        simple_user.tags = [["item1", "item3"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        simple_user.tags[0].insert(1, "item2")
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[0][1] == "item2"
+
+    def test_nested_list_extend(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Extend вложенного списка"""
+        session.add(simple_user)
+        simple_user.tags = [["item1"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        simple_user.tags[0].extend(["item2", "item3"])
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags[0]) == 3
+
+    def test_nested_list_setitem(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Изменение элемента вложенного списка по индексу"""
+        session.add(simple_user)
+        simple_user.tags = [["old_value", "item2"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        simple_user.tags[0][0] = "new_value"
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[0][0] == "new_value"
+
+    def test_nested_list_delitem(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Удаление элемента из вложенного списка по индексу"""
+        session.add(simple_user)
+        simple_user.tags = [["item1", "item2", "item3"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        del simple_user.tags[0][1]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags[0]) == 2
+        assert "item2" not in simple_user.tags[0]
+
+    def test_very_deep_nesting(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Очень глубокая вложенность (5 уровней)"""
+        session.add(simple_user)
+        simple_user.tags = [
+            [
+                [
+                    [
+                        [
+                            "level5"
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[0][0][0][0][0] == "level5"
+
+    def test_nested_list_with_empty_lists(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Вложенные списки с пустыми списками"""
+        session.add(simple_user)
+        simple_user.tags = [[], ["item"], []]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags[0]) == 0
+        assert len(simple_user.tags[1]) == 1
+        assert len(simple_user.tags[2]) == 0
+
+    def test_nested_list_serialization(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Сериализация вложенных списков для MongoDB"""
+        session.add(simple_user)
+        simple_user.tags = [
+            Tag("python"),
+            ["string", Tag("js"), ["deep"]],
+        ]
+
+        query = session.build_update_query(simple_user)
+        assert "$set" in query
+        assert "tags" in query["$set"]
+
+        # Проверяем структуру
+        tags_data = query["$set"]["tags"]
+        assert tags_data[0] == {"title": "python"}
+        assert tags_data[1][0] == "string"
+        assert tags_data[1][1] == {"title": "js"}
+        assert tags_data[1][2] == ["deep"]
+
+    def test_nested_list_original_value_preserved(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Оригинальное значение вложенного списка сохраняется"""
+        simple_user.tags = [["original", "values"]]  # ← ДО add()!
+        session.add(simple_user)
+
+        original = simple_user.get_original_value("tags")
+
+        # Изменяем
+        simple_user.tags[0].append("new")
+
+        # Оригинальное значение не должно измениться
+        assert len(original[0]) == 2
+        assert "new" not in original[0]
+
+    def test_nested_object_with_nested_list_modification(
+            self,
+            session: Any,
+    ) -> None:
+        """Вложенный объект с вложенным списком - one.two[0].data[0].append(2)"""
+
+        @dataclass
+        class Two:
+            data: list[list[int]] = field(default_factory=list)
+
+        @dataclass
+        class One:
+            username: str
+            two: list[Two] = field(default_factory=list)
+            _id: str | None = None
+
+        instrument_class(Two)
+        instrument_class(One)
+
+        # Создаем структуру: One -> list[Two] -> Two.data: list[list[int]]
+        one = One(
+            username="test",
+            two=[
+                Two(data=[[1, 2], [3, 4]]),
+                Two(data=[[5, 6]])
+            ]
+        )
+
+        session.collection_mapping[One] = "ones"
+        session.add(one)
+
+        # Выполняем: one.two[0].data[0].append(999)
+        one.two[0].data[0].append(999)
+
+        # Проверяем отслеживание
+        assert "two" in one.get_changed_fields()
+        assert one.two[0].data[0][-1] == 999
+        assert len(one.two[0].data[0]) == 3
+
+        # Проверяем оригинальное значение
+        original = one.get_original_value("two")
+        assert len(original[0].data[0]) == 2
+        assert 999 not in original[0].data[0]
+
+        # Проверяем сериализацию
+        query = session.build_update_query(one)
+        assert query is not None
+        assert "$set" in query
+        assert "two" in query["$set"]
+
+        # Проверяем структуру данных
+        serialized = query["$set"]["two"]
+        assert serialized[0]["data"][0] == [1, 2, 999]
+
+
+class TestNestedListsEdgeCases:
+    """Граничные случаи для вложенных списков"""
+
+    def test_alternating_nesting(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Чередующаяся вложенность: объект -> список -> объект"""
+        session.add(simple_user)
+        simple_user.tags = [
+            Tag("python"),
+            [Tag("js"), [Tag("ts"), ["go"]]],
+        ]
+
+        assert "tags" in simple_user.get_changed_fields()
+        # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
+        assert hasattr(simple_user.tags[0], 'title')
+        assert simple_user.tags[0].title == "python"
+        assert isinstance(simple_user.tags[1][0], Tag)
+        assert isinstance(simple_user.tags[1][1][0], Tag)
+        assert isinstance(simple_user.tags[1][1][1][0], str)
+
+    def test_nested_list_with_none(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Вложенный список с None значениями"""
+        session.add(simple_user)
+        simple_user.tags = [None, ["item", None], [[None]]]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[0] is None
+        assert simple_user.tags[1][1] is None
+        assert simple_user.tags[2][0][0] is None
+
+    def test_nested_list_modification_preserves_structure(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Изменение вложенного списка сохраняет структуру"""
+        session.add(simple_user)
+        simple_user.tags = [
+            Tag("a"),
+            ["b", ["c", ["d"]]],
+        ]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        # Добавляем на разных уровнях
+        simple_user.tags.append(Tag("e"))
+        simple_user.tags[1].append("f")
+        simple_user.tags[1][1].append("g")
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert len(simple_user.tags) == 3
+        assert len(simple_user.tags[1]) == 3
+        assert len(simple_user.tags[1][1]) == 3
+
+    def test_replacing_nested_list(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Замена вложенного списка целиком"""
+        session.add(simple_user)
+        simple_user.tags = [["old"]]
+
+        # Сбрасываем состояние
+        state = session._instance_states[id(simple_user)]
+        state.changed_fields.clear()
+        state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+        # Заменяем вложенный список
+        simple_user.tags[0] = ["new", "list"]
+
+        assert "tags" in simple_user.get_changed_fields()
+        assert simple_user.tags[0] == ["new", "list"]
+
+    def test_nested_list_with_duplicates(
+            self,
+            session: Any,
+            simple_user: User,
+    ) -> None:
+        """Вложенный список с дублирующимися элементами"""
+        session.add(simple_user)
+        tag = Tag("dup")
+        simple_user.tags = [tag, [tag, [tag]]]
+
+        assert "tags" in simple_user.get_changed_fields()
+        # Все должны быть обернуты в TrackedObject
+        assert simple_user.tags[0].title == "dup"
+        assert simple_user.tags[1][0].title == "dup"
+        assert simple_user.tags[1][1][0].title == "dup"
+
+    def test_triple_nested_list_int_modification(
+            self,
+            session: Any,
+    ) -> None:
+        """Трёхуровневая вложенность списков с int"""
+
+        @dataclass
+        class DeepData:
+            data: list[list[list[int]]] = field(default_factory=list)
+
+        instrument_class(DeepData)
+
+        deep = DeepData(data=[[[1, 2], [3, 4]], [[5, 6]]])
+        session.collection_mapping[DeepData] = "deep_data"
+        session.add(deep)
+
+        # Изменяем на третьем уровне
+        deep.data[0][0].append(99)
+
+        assert "data" in deep.get_changed_fields()
+        assert deep.data[0][0][-1] == 99
+        assert len(deep.data[0][0]) == 3
+
+        # Оригинальное значение сохранено
+        original = deep.get_original_value("data")
+        assert len(original[0][0]) == 2
+        assert original[0][0] == [1, 2]
+
+    def test_triple_nested_list_modify_second_level(
+            self,
+            session: Any,
+    ) -> None:
+        """Изменение на втором уровне трёхуровневой вложенности"""
+
+        @dataclass
+        class DeepData:
+            data: list[list[list[int]]] = field(default_factory=list)
+
+        instrument_class(DeepData)
+
+        deep = DeepData(data=[[[1, 2]], [[3, 4]]])
+        session.collection_mapping[DeepData] = "deep_data"
+        session.add(deep)
+
+        # Добавляем новый список на второй уровень
+        deep.data[0].append([99, 100])
+
+        assert "data" in deep.get_changed_fields()
+        assert deep.data[0][-1] == [99, 100]
+        assert len(deep.data[0]) == 2
+
+        # Оригинальное значение
+        original = deep.get_original_value("data")
+        assert len(original[0]) == 1
+
+    def test_triple_nested_list_modify_first_level(
+            self,
+            session: Any,
+    ) -> None:
+        """Изменение на первом уровне трёхуровневой вложенности"""
+
+        @dataclass
+        class DeepData:
+            data: list[list[list[int]]] = field(default_factory=list)
+
+        instrument_class(DeepData)
+
+        deep = DeepData(data=[[[1, 2]]])
+        session.collection_mapping[DeepData] = "deep_data"
+        session.add(deep)
+
+        # Добавляем новый двухуровневый список
+        deep.data.append([[99, 100], [101, 102]])
+
+        assert "data" in deep.get_changed_fields()
+        assert len(deep.data) == 2
+        assert deep.data[1][0] == [99, 100]
+
+        # Оригинальное значение
+        original = deep.get_original_value("data")
+        assert len(original) == 1
+
+    def test_triple_nested_list_serialization(
+            self,
+            session: Any,
+    ) -> None:
+        """Сериализация трёхуровневого списка"""
+
+        @dataclass
+        class DeepData:
+            data: list[list[list[int]]] = field(default_factory=list)
+            _id: str | None = None
+
+        instrument_class(DeepData)
+
+        deep = DeepData(data=[[[1, 2], [3]], [[4, 5, 6]]])
+        session.collection_mapping[DeepData] = "deep_data"
+        session.add(deep)
+
+        deep.data[0][0].append(999)
+
+        query = session.build_update_query(deep)
+        assert query is not None
+        assert "$set" in query
+
+        # Проверяем правильность сериализации
+        serialized = query["$set"]["data"]
+        assert serialized[0][0] == [1, 2, 999]
+        assert serialized[0][1] == [3]
+        assert serialized[1][0] == [4, 5, 6]
+
+
+# ============= Параметризованные тесты для вложенных списков =============
+
+
+@dataclass
+class NestedListTestCase:
+    """Тестовый случай для вложенных списков"""
+    id: str
+    initial_value: list[Any]
+    modification: Callable[[list[Any]], Any]
+    expected_modified: bool
+    description: str
+
+
+NESTED_LIST_TEST_CASES = [
+    NestedListTestCase(
+        id="append_to_nested",
+        initial_value=[["a", "b"]],
+        modification=lambda lst: lst[0].append("c"),
+        expected_modified=True,
+        description="Append к вложенному списку",
+    ),
+    NestedListTestCase(
+        id="modify_deep_nested",
+        initial_value=[[["deep"]]],
+        modification=lambda lst: lst[0][0].append("item"),
+        expected_modified=True,
+        description="Изменение глубоко вложенного списка",
+    ),
+    NestedListTestCase(
+        id="replace_nested_item",
+        initial_value=[["old"]],
+        modification=lambda lst: lst[0].__setitem__(0, "new"),
+        expected_modified=True,
+        description="Замена элемента во вложенном списке",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.id) for tc in NESTED_LIST_TEST_CASES],
+)
+def test_parametrized_nested_lists(
+        session: Any,
+        simple_user: User,
+        test_case: NestedListTestCase,
+) -> None:
+    """Параметризованный тест вложенных списков"""
+    session.add(simple_user)
+    simple_user.tags = test_case.initial_value
+
+    # Сбрасываем состояние
+    state = session._instance_states[id(simple_user)]
+    state.changed_fields.clear()
+    state.original_values["tags"] = copy.deepcopy(simple_user.tags)
+
+    # Применяем модификацию
+    test_case.modification(simple_user.tags)
+
+    if test_case.expected_modified:
+        assert "tags" in simple_user.get_changed_fields()
+    else:
+        assert "tags" not in simple_user.get_changed_fields()
 
 
 if __name__ == "__main__":
