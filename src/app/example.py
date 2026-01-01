@@ -449,54 +449,68 @@ class Session:
             return
 
         doc_id = getattr(instance, "_id", None)
-        operation_kwargs: dict[str, Any] = {}
-        if self.mongo_session:
-            operation_kwargs["session"] = self.mongo_session
 
         if doc_id:
             await self._update_document(
-                collection,
-                doc_id,
-                update_query,
-                operation_kwargs,
+                collection=collection,
+                doc_id=doc_id,
+                update_query=update_query,
+                session=self.mongo_session,
             )
         else:
             await self._insert_document(
-                collection,
-                instance,
-                operation_kwargs,
+                collection=collection,
+                instance=instance,
+                session=self.mongo_session,
             )
 
         state.changed_fields.clear()
         state.original_values.clear()
 
-    @staticmethod
     async def _update_document(
+        self,
         collection: AsyncIOMotorCollection[dict[str, Any]],
         doc_id: str | ObjectId,
         update_query: dict[str, Any],
-        operation_kwargs: dict[str, Any],
+        session: AsyncIOMotorClientSession | None = None,
     ) -> None:
         """Обновляет существующий документ"""
         filter_query = {
             "_id": ObjectId(doc_id) if isinstance(doc_id, str) else doc_id,
         }
-        await collection.update_one(
-            filter_query,
-            update_query,
-            **operation_kwargs,
-        )
+
+        if session is not None:
+            await collection.update_one(
+                filter_query,
+                update_query,
+                session=session,
+            )
+        else:
+            await collection.update_one(
+                filter_query,
+                update_query,
+            )
 
     async def _insert_document(
         self,
         collection: AsyncIOMotorCollection[dict[str, Any]],
         instance: Any,
-        operation_kwargs: dict[str, Any],
+        session: AsyncIOMotorClientSession | None = None,
     ) -> None:
         """Вставляет новый документ"""
         doc_data = self._serialize_value(instance)
-        result = await collection.insert_one(doc_data, **operation_kwargs)
-        # Используем object.__setattr__ чтобы обойти tracking_setattr
+
+        # Если _id нет или None, MongoDB сам сгенерирует
+        # Удаляем None значение, чтобы MongoDB создал свой ID
+        if "_id" in doc_data and doc_data["_id"] is None:
+            del doc_data["_id"]
+
+        if session is not None:
+            result = await collection.insert_one(doc_data, session=session)
+        else:
+            result = await collection.insert_one(doc_data)
+
+        # Присваиваем ID от MongoDB
         object.__setattr__(instance, "_id", result.inserted_id)
 
     async def flush(self) -> None:
