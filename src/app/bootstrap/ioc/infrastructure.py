@@ -15,8 +15,8 @@ from motor.motor_asyncio import (
 from app.application.change_tracker import ChangeTracker
 from app.bootstrap.configs import MongoDBConfig
 from app.domain.model import User
-from app.example import Session
 from app.infrastructure.db.change_tracker import MongoChangeTracker
+from app.infrastructure.trackers.sqlalchemy_like_example import Session
 
 logger = logging.getLogger(__name__)
 

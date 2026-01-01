@@ -6,7 +6,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.example import Session, instrument_class
+from app.infrastructure.trackers.sqlalchemy_like_example import (
+    Session,
+    instrument_class,
+)
 
 
 def reset_tracking_state(

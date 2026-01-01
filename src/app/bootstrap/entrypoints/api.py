@@ -15,8 +15,10 @@ from app.bootstrap.configs import load_settings
 from app.bootstrap.ioc.containers import fastapi_container
 from app.domain.course import Course
 from app.domain.model import User
-from app.example import instrument_class
 from app.infrastructure.log.main import configure_logging
+from app.infrastructure.trackers.sqlalchemy_like_example import (
+    instrument_class,
+)
 from app.presentation.admin.mongo_course_view import MongoCourseView
 from app.presentation.admin.mongo_view import MongoUserView
 from app.presentation.api.middlewares.setup import setup_middlewares
