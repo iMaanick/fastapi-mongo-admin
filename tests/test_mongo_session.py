@@ -1,3 +1,5 @@
+# ruff: noqa: SLF001, DTZ001
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -17,6 +19,7 @@ from app.application.change_tracker import (
 from app.infrastructure.trackers.mongo_session import MongoSession
 
 # ============= Test Models =============
+
 
 @dataclass
 class User:
@@ -53,6 +56,7 @@ class NotADataclass:
 
 # ============= Fixtures =============
 
+
 @pytest.fixture
 def retort():
     """Create Retort instance"""
@@ -62,8 +66,7 @@ def retort():
 @pytest.fixture
 def mock_database():
     """Mock Motor database"""
-    db = MagicMock(spec=AsyncIOMotorDatabase)
-    return db
+    return MagicMock(spec=AsyncIOMotorDatabase)
 
 
 @pytest.fixture
@@ -87,7 +90,12 @@ def collection_mapping():
 
 
 @pytest.fixture
-def mongo_session(mock_database, mock_session, retort, collection_mapping):
+def mongo_session(
+    mock_database,
+    mock_session,
+    retort,
+    collection_mapping,
+):
     """Create MongoSession instance"""
     return MongoSession(
         collection_mapping=collection_mapping,
@@ -109,7 +117,10 @@ def valid_object_id():
 
 # ============= Tests: _get_changed_fields =============
 
-def test_get_changed_fields_no_changes(mongo_session):
+
+def test_get_changed_fields_no_changes(
+    mongo_session,
+):
     """Test no changes detected"""
     original = {"name": "Alice", "age": 25, "tags": ["python"]}
     current = {"name": "Alice", "age": 25, "tags": ["python"]}
@@ -119,7 +130,9 @@ def test_get_changed_fields_no_changes(mongo_session):
     assert changes == {}
 
 
-def test_get_changed_fields_simple_field_changed(mongo_session):
+def test_get_changed_fields_simple_field_changed(
+    mongo_session,
+):
     """Test simple field change"""
     original = {"name": "Alice", "age": 25}
     current = {"name": "Alice", "age": 26}
@@ -129,7 +142,9 @@ def test_get_changed_fields_simple_field_changed(mongo_session):
     assert changes == {"age": 26}
 
 
-def test_get_changed_fields_multiple_fields_changed(mongo_session):
+def test_get_changed_fields_multiple_fields_changed(
+    mongo_session,
+):
     """Test multiple fields changed"""
     original = {"name": "Alice", "age": 25, "email": "old@test.com"}
     current = {"name": "Bob", "age": 30, "email": "new@test.com"}
@@ -139,7 +154,9 @@ def test_get_changed_fields_multiple_fields_changed(mongo_session):
     assert changes == {"name": "Bob", "age": 30, "email": "new@test.com"}
 
 
-def test_get_changed_fields_list_changed(mongo_session):
+def test_get_changed_fields_list_changed(
+    mongo_session,
+):
     """Test list field change - entire list replaced"""
     original = {"name": "Alice", "tags": ["python", "fastapi"]}
     current = {"name": "Alice", "tags": ["python", "django"]}
@@ -149,7 +166,9 @@ def test_get_changed_fields_list_changed(mongo_session):
     assert changes == {"tags": ["python", "django"]}
 
 
-def test_get_changed_fields_list_order_changed(mongo_session):
+def test_get_changed_fields_list_order_changed(
+    mongo_session,
+):
     """Test list order change - should detect difference"""
     original = {"tags": ["python", "fastapi"]}
     current = {"tags": ["fastapi", "python"]}
@@ -160,7 +179,9 @@ def test_get_changed_fields_list_order_changed(mongo_session):
     assert changes == {"tags": ["fastapi", "python"]}
 
 
-def test_get_changed_fields_list_item_added(mongo_session):
+def test_get_changed_fields_list_item_added(
+    mongo_session,
+):
     """Test item added to list"""
     original = {"tags": ["python"]}
     current = {"tags": ["python", "fastapi"]}
@@ -170,7 +191,9 @@ def test_get_changed_fields_list_item_added(mongo_session):
     assert changes == {"tags": ["python", "fastapi"]}
 
 
-def test_get_changed_fields_list_item_removed(mongo_session):
+def test_get_changed_fields_list_item_removed(
+    mongo_session,
+):
     """Test item removed from list"""
     original = {"tags": ["python", "fastapi", "django"]}
     current = {"tags": ["python"]}
@@ -180,7 +203,9 @@ def test_get_changed_fields_list_item_removed(mongo_session):
     assert changes == {"tags": ["python"]}
 
 
-def test_get_changed_fields_empty_list_to_populated(mongo_session):
+def test_get_changed_fields_empty_list_to_populated(
+    mongo_session,
+):
     """Test empty list becomes populated"""
     original = {"tags": []}
     current = {"tags": ["python"]}
@@ -190,7 +215,9 @@ def test_get_changed_fields_empty_list_to_populated(mongo_session):
     assert changes == {"tags": ["python"]}
 
 
-def test_get_changed_fields_populated_list_to_empty(mongo_session):
+def test_get_changed_fields_populated_list_to_empty(
+    mongo_session,
+):
     """Test populated list becomes empty"""
     original = {"tags": ["python", "fastapi"]}
     current = {"tags": []}
@@ -200,7 +227,9 @@ def test_get_changed_fields_populated_list_to_empty(mongo_session):
     assert changes == {"tags": []}
 
 
-def test_get_changed_fields_dict_changed(mongo_session):
+def test_get_changed_fields_dict_changed(
+    mongo_session,
+):
     """Test dict field change - entire dict replaced"""
     original = {"metadata": {"role": "admin", "level": 5}}
     current = {"metadata": {"role": "user", "level": 5}}
@@ -210,7 +239,9 @@ def test_get_changed_fields_dict_changed(mongo_session):
     assert changes == {"metadata": {"role": "user", "level": 5}}
 
 
-def test_get_changed_fields_dict_key_added(mongo_session):
+def test_get_changed_fields_dict_key_added(
+    mongo_session,
+):
     """Test key added to dict"""
     original = {"metadata": {"role": "admin"}}
     current = {"metadata": {"role": "admin", "level": 5}}
@@ -220,7 +251,9 @@ def test_get_changed_fields_dict_key_added(mongo_session):
     assert changes == {"metadata": {"role": "admin", "level": 5}}
 
 
-def test_get_changed_fields_dict_key_removed(mongo_session):
+def test_get_changed_fields_dict_key_removed(
+    mongo_session,
+):
     """Test key removed from dict"""
     original = {"metadata": {"role": "admin", "level": 5}}
     current = {"metadata": {"role": "admin"}}
@@ -230,7 +263,9 @@ def test_get_changed_fields_dict_key_removed(mongo_session):
     assert changes == {"metadata": {"role": "admin"}}
 
 
-def test_get_changed_fields_empty_dict_to_populated(mongo_session):
+def test_get_changed_fields_empty_dict_to_populated(
+    mongo_session,
+):
     """Test empty dict becomes populated"""
     original = {"metadata": {}}
     current = {"metadata": {"role": "admin"}}
@@ -240,7 +275,9 @@ def test_get_changed_fields_empty_dict_to_populated(mongo_session):
     assert changes == {"metadata": {"role": "admin"}}
 
 
-def test_get_changed_fields_nested_dict_changed(mongo_session):
+def test_get_changed_fields_nested_dict_changed(
+    mongo_session,
+):
     """Test nested dict change"""
     original = {"metadata": {"user": {"role": "admin"}}}
     current = {"metadata": {"user": {"role": "user"}}}
@@ -250,7 +287,9 @@ def test_get_changed_fields_nested_dict_changed(mongo_session):
     assert changes == {"metadata": {"user": {"role": "user"}}}
 
 
-def test_get_changed_fields_field_added(mongo_session):
+def test_get_changed_fields_field_added(
+    mongo_session,
+):
     """Test new field added"""
     original = {"name": "Alice"}
     current = {"name": "Alice", "email": "alice@test.com"}
@@ -260,7 +299,9 @@ def test_get_changed_fields_field_added(mongo_session):
     assert changes == {"email": "alice@test.com"}
 
 
-def test_get_changed_fields_field_removed(mongo_session):
+def test_get_changed_fields_field_removed(
+    mongo_session,
+):
     """Test field removed (becomes None)"""
     original = {"name": "Alice", "email": "alice@test.com"}
     current = {"name": "Alice"}
@@ -272,7 +313,9 @@ def test_get_changed_fields_field_removed(mongo_session):
     assert changes["email"] is None
 
 
-def test_get_changed_fields_value_becomes_none(mongo_session):
+def test_get_changed_fields_value_becomes_none(
+    mongo_session,
+):
     """Test value explicitly set to None"""
     original = {"name": "Alice", "email": "alice@test.com"}
     current = {"name": "Alice", "email": None}
@@ -282,7 +325,9 @@ def test_get_changed_fields_value_becomes_none(mongo_session):
     assert changes == {"email": None}
 
 
-def test_get_changed_fields_none_becomes_value(mongo_session):
+def test_get_changed_fields_none_becomes_value(
+    mongo_session,
+):
     """Test None becomes actual value"""
     original = {"name": "Alice", "email": None}
     current = {"name": "Alice", "email": "alice@test.com"}
@@ -292,7 +337,9 @@ def test_get_changed_fields_none_becomes_value(mongo_session):
     assert changes == {"email": "alice@test.com"}
 
 
-def test_get_changed_fields_boolean_toggle(mongo_session):
+def test_get_changed_fields_boolean_toggle(
+    mongo_session,
+):
     """Test boolean field toggle"""
     original = {"is_active": True}
     current = {"is_active": False}
@@ -302,7 +349,9 @@ def test_get_changed_fields_boolean_toggle(mongo_session):
     assert changes == {"is_active": False}
 
 
-def test_get_changed_fields_number_zero_vs_nonzero(mongo_session):
+def test_get_changed_fields_number_zero_vs_nonzero(
+    mongo_session,
+):
     """Test number changing to/from zero"""
     original = {"age": 25}
     current = {"age": 0}
@@ -312,7 +361,9 @@ def test_get_changed_fields_number_zero_vs_nonzero(mongo_session):
     assert changes == {"age": 0}
 
 
-def test_get_changed_fields_empty_string_vs_populated(mongo_session):
+def test_get_changed_fields_empty_string_vs_populated(
+    mongo_session,
+):
     """Test empty string vs populated"""
     original = {"name": ""}
     current = {"name": "Alice"}
@@ -322,7 +373,9 @@ def test_get_changed_fields_empty_string_vs_populated(mongo_session):
     assert changes == {"name": "Alice"}
 
 
-def test_get_changed_fields_complex_nested_structure(mongo_session):
+def test_get_changed_fields_complex_nested_structure(
+    mongo_session,
+):
     """Test complex nested structure change"""
     original = {
         "user": {
@@ -350,7 +403,9 @@ def test_get_changed_fields_complex_nested_structure(mongo_session):
     }
 
 
-def test_get_changed_fields_list_of_dicts_changed(mongo_session):
+def test_get_changed_fields_list_of_dicts_changed(
+    mongo_session,
+):
     """Test list of dicts change"""
     original = {"items": [{"id": 1, "qty": 2}]}
     current = {"items": [{"id": 1, "qty": 3}]}
@@ -360,7 +415,9 @@ def test_get_changed_fields_list_of_dicts_changed(mongo_session):
     assert changes == {"items": [{"id": 1, "qty": 3}]}
 
 
-def test_get_changed_fields_datetime_changed(mongo_session):
+def test_get_changed_fields_datetime_changed(
+    mongo_session,
+):
     """Test datetime field change"""
     dt1 = datetime(2025, 1, 1, 12, 0, 0)
     dt2 = datetime(2025, 1, 2, 12, 0, 0)
@@ -375,7 +432,10 @@ def test_get_changed_fields_datetime_changed(mongo_session):
 
 # ============= Tests: add() =============
 
-def test_add_entity_with_id(mongo_session):
+
+def test_add_entity_with_id(
+    mongo_session,
+):
     """Test adding entity with _id"""
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
 
@@ -384,10 +444,13 @@ def test_add_entity_with_id(mongo_session):
     assert User in mongo_session._tracked_entities
     assert "507f1f77bcf86cd799439011" in mongo_session._tracked_entities[User]
     assert User in mongo_session._original_snapshots
-    assert "507f1f77bcf86cd799439011" in mongo_session._original_snapshots[User]
+    snapshots = mongo_session._original_snapshots[User]
+    assert "507f1f77bcf86cd799439011" in snapshots
 
 
-def test_add_entity_without_id(mongo_session):
+def test_add_entity_without_id(
+    mongo_session,
+):
     """Test adding entity without _id (pending insert)"""
     user = User(name="Bob", age=30)
 
@@ -398,7 +461,9 @@ def test_add_entity_without_id(mongo_session):
     assert User not in mongo_session._tracked_entities
 
 
-def test_add_same_entity_twice_no_duplicate(mongo_session):
+def test_add_same_entity_twice_no_duplicate(
+    mongo_session,
+):
     """Test adding same entity twice doesn't duplicate"""
     user = User(name="Alice")
 
@@ -408,15 +473,21 @@ def test_add_same_entity_twice_no_duplicate(mongo_session):
     assert len(mongo_session._pending_inserts[User]) == 1
 
 
-def test_add_non_dataclass_raises_error(mongo_session):
+def test_add_non_dataclass_raises_error(
+    mongo_session,
+):
     """Test adding non-dataclass raises error"""
     obj = NotADataclass()
 
-    with pytest.raises(EntityNotDataclassError):
+    with pytest.raises(
+        EntityNotDataclassError,
+    ):
         mongo_session.add(obj)
 
 
-def test_add_unmapped_entity_raises_error(mongo_session):
+def test_add_unmapped_entity_raises_error(
+    mongo_session,
+):
     """Test adding entity without collection mapping raises error"""
 
     @dataclass
@@ -426,37 +497,52 @@ def test_add_unmapped_entity_raises_error(mongo_session):
 
     entity = UnmappedEntity(name="test")
 
-    with pytest.raises(CollectionMappingNotFoundError):
+    with pytest.raises(
+        CollectionMappingNotFoundError,
+    ):
         mongo_session.add(entity)
 
 
-def test_add_snapshot_excludes_id(mongo_session, retort):
+def test_add_snapshot_excludes_id(
+    mongo_session,
+    retort,
+):
     """Test snapshot doesn't include _id"""
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
 
     mongo_session.add(user)
 
-    snapshot = mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"]
+    user_snapshots = mongo_session._original_snapshots[User]
+    snapshot = user_snapshots["507f1f77bcf86cd799439011"]
     assert "_id" not in snapshot
     assert snapshot["name"] == "Alice"
 
 
-def test_add_already_tracked_entity_no_snapshot_overwrite(mongo_session):
+def test_add_already_tracked_entity_no_snapshot_overwrite(
+    mongo_session,
+):
     """Test adding already tracked entity doesn't overwrite snapshot"""
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
 
     mongo_session.add(user)
-    original_snapshot = mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"].copy()
+    original_snapshot = mongo_session._original_snapshots[User][
+        "507f1f77bcf86cd799439011"
+    ].copy()
 
     # Modify and add again
     user.age = 30
     mongo_session.add(user)
 
     # Snapshot should remain unchanged
-    assert mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"] == original_snapshot
+    assert (
+        mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"]
+        == original_snapshot
+    )
 
 
-def test_add_entity_without_id_field_raises_error(mongo_session):
+def test_add_entity_without_id_field_raises_error(
+    mongo_session,
+):
     """Test EntityMissingIdError for entity without _id field"""
 
     @dataclass
@@ -475,7 +561,9 @@ def test_add_entity_without_id_field_raises_error(mongo_session):
     assert "_id" in str(exc_info.value)
 
 
-def test_add_entity_with_id_field_none_value_works(mongo_session):
+def test_add_entity_with_id_field_none_value_works(
+    mongo_session,
+):
     """Test entity with _id field but None value goes to pending"""
     user = User(_id=None, name="Alice")  # _id есть, но None
 
@@ -485,7 +573,10 @@ def test_add_entity_with_id_field_none_value_works(mongo_session):
     assert user in mongo_session._pending_inserts[User]
 
 
-def test_add_entity_with_id_value_works(mongo_session, valid_object_id):
+def test_add_entity_with_id_value_works(
+    mongo_session,
+    valid_object_id,
+):
     """Test entity with _id value goes to tracked"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice")  # _id есть и не None
@@ -498,7 +589,11 @@ def test_add_entity_with_id_value_works(mongo_session, valid_object_id):
 
 # ============= Tests: add_all() =============
 
-def test_add_all_multiple_entities(mongo_session, valid_object_id):
+
+def test_add_all_multiple_entities(
+    mongo_session,
+    valid_object_id,
+):
     """Test adding multiple entities"""
     users = [
         User(_id=valid_object_id(), name="Alice"),
@@ -512,7 +607,9 @@ def test_add_all_multiple_entities(mongo_session, valid_object_id):
     assert len(mongo_session._pending_inserts[User]) == 1
 
 
-def test_add_all_empty_list(mongo_session):
+def test_add_all_empty_list(
+    mongo_session,
+):
     """Test adding empty list"""
     mongo_session.add_all([])
 
@@ -522,8 +619,12 @@ def test_add_all_empty_list(mongo_session):
 
 # ============= Tests: flush() - inserts =============
 
+
 @pytest.mark.asyncio
-async def test_flush_pending_inserts(mongo_session, mock_database):
+async def test_flush_pending_inserts(
+    mongo_session,
+    mock_database,
+):
     """Test flush executes pending inserts"""
     # Setup
     user = User(name="Alice", age=25)
@@ -545,16 +646,17 @@ async def test_flush_pending_inserts(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_flush_multiple_pending_inserts(mongo_session, mock_database):
+async def test_flush_multiple_pending_inserts(
+    mongo_session,
+    mock_database,
+):
     """Test flush handles multiple inserts"""
     # Setup
     users = [User(name=f"User{i}") for i in range(3)]
     mongo_session.add_all(users)
 
     mock_collection = AsyncMock()
-    mock_results = [
-        MagicMock(inserted_id=ObjectId()) for _ in range(3)
-    ]
+    mock_results = [MagicMock(inserted_id=ObjectId()) for _ in range(3)]
     mock_collection.insert_one.side_effect = mock_results
     mock_database.__getitem__.return_value = mock_collection
 
@@ -569,8 +671,12 @@ async def test_flush_multiple_pending_inserts(mongo_session, mock_database):
 
 # ============= Tests: flush() - updates =============
 
+
 @pytest.mark.asyncio
-async def test_flush_detects_changes_and_updates(mongo_session, mock_database):
+async def test_flush_detects_changes_and_updates(
+    mongo_session,
+    mock_database,
+):
     """Test flush detects changes and performs update"""
     # Setup
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
@@ -606,7 +712,10 @@ async def test_flush_detects_changes_and_updates(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_flush_no_changes_no_update(mongo_session, mock_database):
+async def test_flush_no_changes_no_update(
+    mongo_session,
+    mock_database,
+):
     """Test flush doesn't update if no changes"""
     # Setup
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
@@ -623,7 +732,10 @@ async def test_flush_no_changes_no_update(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_flush_updates_list_field(mongo_session, mock_database):
+async def test_flush_updates_list_field(
+    mongo_session,
+    mock_database,
+):
     """Test flush updates list field correctly"""
     # Setup
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", tags=["python"])
@@ -648,10 +760,17 @@ async def test_flush_updates_list_field(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_flush_updates_dict_field(mongo_session, mock_database):
+async def test_flush_updates_dict_field(
+    mongo_session,
+    mock_database,
+):
     """Test flush updates dict field correctly"""
     # Setup
-    user = User(_id="507f1f77bcf86cd799439011", name="Alice", metadata={"role": "admin"})
+    user = User(
+        _id="507f1f77bcf86cd799439011",
+        name="Alice",
+        metadata={"role": "admin"},
+    )
     mongo_session.add(user)
 
     # Modify dict
@@ -673,12 +792,17 @@ async def test_flush_updates_dict_field(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_flush_updates_snapshot_after_success(mongo_session, mock_database):
+async def test_flush_updates_snapshot_after_success(
+    mongo_session,
+    mock_database,
+):
     """Test flush updates snapshot after successful update"""
     # Setup
     user = User(_id="507f1f77bcf86cd799439011", name="Alice", age=25)
     mongo_session.add(user)
-    original_snapshot = mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"].copy()
+    original_snapshot = mongo_session._original_snapshots[User][
+        "507f1f77bcf86cd799439011"
+    ].copy()
 
     # Modify
     user.age = 26
@@ -693,13 +817,17 @@ async def test_flush_updates_snapshot_after_success(mongo_session, mock_database
     await mongo_session.flush()
 
     # Assert - snapshot should be updated
-    new_snapshot = mongo_session._original_snapshots[User]["507f1f77bcf86cd799439011"]
+    user_snapshots = mongo_session._original_snapshots[User]
+    new_snapshot = user_snapshots["507f1f77bcf86cd799439011"]
     assert new_snapshot["age"] == 26
     assert new_snapshot != original_snapshot
 
 
 @pytest.mark.asyncio
-async def test_flush_invalid_object_id_raises_error(mongo_session, mock_database):
+async def test_flush_invalid_object_id_raises_error(
+    mongo_session,
+    mock_database,
+):
     """Test flush with invalid ObjectId raises error"""
     # Setup - manually create bad state
     user = User(name="Alice")
@@ -707,7 +835,13 @@ async def test_flush_invalid_object_id_raises_error(mongo_session, mock_database
 
     mongo_session._tracked_entities[User] = {"invalid_object_id": user}
     mongo_session._original_snapshots[User] = {
-        "invalid_object_id": {"name": "Alice", "age": 0, "email": "", "tags": [], "metadata": {}},
+        "invalid_object_id": {
+            "name": "Alice",
+            "age": 0,
+            "email": "",
+            "tags": [],
+            "metadata": {},
+        },
     }
 
     user.age = 25  # Make a change
@@ -715,14 +849,21 @@ async def test_flush_invalid_object_id_raises_error(mongo_session, mock_database
     mock_database.__getitem__.return_value = AsyncMock()
 
     # Act & Assert
-    with pytest.raises(InvalidEntityIdError):
+    with pytest.raises(
+        InvalidEntityIdError,
+    ):
         await mongo_session.flush()
 
 
 # ============= Tests: commit() =============
 
+
 @pytest.mark.asyncio
-async def test_commit_flushes_and_commits_transaction(mongo_session, mock_session, mock_database):
+async def test_commit_flushes_and_commits_transaction(
+    mongo_session,
+    mock_session,
+    mock_database,
+):
     """Test commit flushes changes and commits transaction"""
     # Setup
     user = User(name="Alice")
@@ -744,7 +885,10 @@ async def test_commit_flushes_and_commits_transaction(mongo_session, mock_sessio
 
 
 @pytest.mark.asyncio
-async def test_commit_clears_tracking(mongo_session, mock_session):
+async def test_commit_clears_tracking(
+    mongo_session,
+    mock_session,
+):
     """Test commit clears all tracking structures"""
     # Setup
     user = User(_id="507f1f77bcf86cd799439011", name="Alice")
@@ -761,8 +905,12 @@ async def test_commit_clears_tracking(mongo_session, mock_session):
 
 # ============= Tests: rollback() =============
 
+
 @pytest.mark.asyncio
-async def test_rollback_aborts_transaction(mongo_session, mock_session):
+async def test_rollback_aborts_transaction(
+    mongo_session,
+    mock_session,
+):
     """Test rollback aborts transaction"""
     # Setup
     user = User(name="Alice")
@@ -778,7 +926,11 @@ async def test_rollback_aborts_transaction(mongo_session, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_rollback_clears_all_tracking(mongo_session, mock_session, valid_object_id):
+async def test_rollback_clears_all_tracking(
+    mongo_session,
+    mock_session,
+    valid_object_id,
+):
     """Test rollback clears all tracking structures"""
     # Setup
     user1 = User(_id=valid_object_id(), name="Alice")
@@ -797,14 +949,20 @@ async def test_rollback_clears_all_tracking(mongo_session, mock_session, valid_o
 
 # ============= Edge Cases =============
 
+
 @pytest.mark.asyncio
-async def test_flush_empty_session(mongo_session):
+async def test_flush_empty_session(
+    mongo_session,
+):
     """Test flush with no tracked entities"""
     await mongo_session.flush()
     # Should not raise any errors
 
 
-def test_multiple_entity_types_tracked(mongo_session, valid_object_id):
+def test_multiple_entity_types_tracked(
+    mongo_session,
+    valid_object_id,
+):
     """Test tracking multiple entity types simultaneously"""
     user = User(_id=valid_object_id(), name="Alice")
     product = Product(_id=valid_object_id(), title="Book")
@@ -818,7 +976,11 @@ def test_multiple_entity_types_tracked(mongo_session, valid_object_id):
 
 
 @pytest.mark.asyncio
-async def test_flush_handles_multiple_entity_types(mongo_session, mock_database, valid_object_id):
+async def test_flush_handles_multiple_entity_types(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Test flush handles updates for multiple entity types"""
     # Setup - используем валидные ObjectId
     user_id = valid_object_id()
@@ -846,7 +1008,9 @@ async def test_flush_handles_multiple_entity_types(mongo_session, mock_database,
     assert mock_collection.update_one.call_count == 2
 
 
-def test_entity_id_converted_to_string(mongo_session):
+def test_entity_id_converted_to_string(
+    mongo_session,
+):
     """Test entity _id is converted to string for tracking"""
     object_id = ObjectId("507f1f77bcf86cd799439011")
     user = User(_id=object_id, name="Alice")
@@ -859,8 +1023,12 @@ def test_entity_id_converted_to_string(mongo_session):
 
 # ============= Integration Tests: Real-world Scenarios =============
 
+
 @pytest.mark.asyncio
-async def test_scenario_create_user_and_insert(mongo_session, mock_database):
+async def test_scenario_create_user_and_insert(
+    mongo_session,
+    mock_database,
+):
     """Scenario: Create new user and insert into DB"""
     # Arrange - создаем нового пользователя без ID
     user = User(
@@ -896,7 +1064,11 @@ async def test_scenario_create_user_and_insert(mongo_session, mock_database):
 
 
 @pytest.mark.asyncio
-async def test_scenario_update_simple_fields(mongo_session, mock_database, valid_object_id):
+async def test_scenario_update_simple_fields(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Update simple scalar fields"""
     # Arrange - существующий пользователь
     user_id = valid_object_id()
@@ -936,7 +1108,11 @@ async def test_scenario_update_simple_fields(mongo_session, mock_database, valid
 
 
 @pytest.mark.asyncio
-async def test_scenario_add_items_to_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_add_items_to_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Add items to list field"""
     # Arrange
     user_id = valid_object_id()
@@ -964,7 +1140,11 @@ async def test_scenario_add_items_to_list(mongo_session, mock_database, valid_ob
 
 
 @pytest.mark.asyncio
-async def test_scenario_remove_items_from_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_remove_items_from_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Remove items from list"""
     # Arrange
     user_id = valid_object_id()
@@ -992,7 +1172,11 @@ async def test_scenario_remove_items_from_list(mongo_session, mock_database, val
 
 
 @pytest.mark.asyncio
-async def test_scenario_clear_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_clear_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Clear entire list"""
     # Arrange
     user_id = valid_object_id()
@@ -1019,7 +1203,11 @@ async def test_scenario_clear_list(mongo_session, mock_database, valid_object_id
 
 
 @pytest.mark.asyncio
-async def test_scenario_reorder_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_reorder_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Reorder list items"""
     # Arrange
     user_id = valid_object_id()
@@ -1046,7 +1234,11 @@ async def test_scenario_reorder_list(mongo_session, mock_database, valid_object_
 
 
 @pytest.mark.asyncio
-async def test_scenario_update_dict_add_key(mongo_session, mock_database, valid_object_id):
+async def test_scenario_update_dict_add_key(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Add key to dict field"""
     # Arrange
     user_id = valid_object_id()
@@ -1078,7 +1270,11 @@ async def test_scenario_update_dict_add_key(mongo_session, mock_database, valid_
 
 
 @pytest.mark.asyncio
-async def test_scenario_update_dict_modify_value(mongo_session, mock_database, valid_object_id):
+async def test_scenario_update_dict_modify_value(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Modify dict value"""
     # Arrange
     user_id = valid_object_id()
@@ -1106,7 +1302,11 @@ async def test_scenario_update_dict_modify_value(mongo_session, mock_database, v
 
 
 @pytest.mark.asyncio
-async def test_scenario_update_dict_remove_key(mongo_session, mock_database, valid_object_id):
+async def test_scenario_update_dict_remove_key(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Remove key from dict"""
     # Arrange
     user_id = valid_object_id()
@@ -1134,7 +1334,11 @@ async def test_scenario_update_dict_remove_key(mongo_session, mock_database, val
 
 
 @pytest.mark.asyncio
-async def test_scenario_nested_dict_modification(mongo_session, mock_database, valid_object_id):
+async def test_scenario_nested_dict_modification(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Modify nested dict structure"""
     # Arrange
     user_id = valid_object_id()
@@ -1172,7 +1376,11 @@ async def test_scenario_nested_dict_modification(mongo_session, mock_database, v
 
 
 @pytest.mark.asyncio
-async def test_scenario_list_of_dicts(mongo_session, mock_database, valid_object_id):
+async def test_scenario_list_of_dicts(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Work with list of dicts (like Order items)"""
     # Arrange
     order_id = valid_object_id()
@@ -1195,7 +1403,9 @@ async def test_scenario_list_of_dicts(mongo_session, mock_database, valid_object
     # Act - изменяем список словарей
     mongo_session.add(order)
     order.items[0]["quantity"] = 3  # Увеличиваем количество
-    order.items.append({"product_id": "p3", "quantity": 1, "price": 15.0})  # Добавляем товар
+    order.items.append(
+        {"product_id": "p3", "quantity": 1, "price": 15.0},
+    )  # Добавляем товар
     order.total = 65.0
     await mongo_session.flush()
 
@@ -1208,7 +1418,11 @@ async def test_scenario_list_of_dicts(mongo_session, mock_database, valid_object
 
 
 @pytest.mark.asyncio
-async def test_scenario_complex_nested_update(mongo_session, mock_database, valid_object_id):
+async def test_scenario_complex_nested_update(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Complex nested structure update"""
     # Arrange - сложная вложенная структура
     user_id = valid_object_id()
@@ -1249,11 +1463,13 @@ async def test_scenario_complex_nested_update(mongo_session, mock_database, vali
     user.metadata["projects"][0]["tags"].append("mongodb")
 
     # Добавляем новый проект
-    user.metadata["projects"].append({
-        "name": "Project C",
-        "tags": ["go"],
-        "status": "active",
-    })
+    user.metadata["projects"].append(
+        {
+            "name": "Project C",
+            "tags": ["go"],
+            "status": "active",
+        },
+    )
 
     # Обновляем навыки
     user.metadata["skills"]["languages"].append("Go")
@@ -1275,7 +1491,11 @@ async def test_scenario_complex_nested_update(mongo_session, mock_database, vali
 
 
 @pytest.mark.asyncio
-async def test_scenario_replace_entire_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_replace_entire_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Replace entire list with new one"""
     # Arrange
     user_id = valid_object_id()
@@ -1302,7 +1522,11 @@ async def test_scenario_replace_entire_list(mongo_session, mock_database, valid_
 
 
 @pytest.mark.asyncio
-async def test_scenario_replace_entire_dict(mongo_session, mock_database, valid_object_id):
+async def test_scenario_replace_entire_dict(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Replace entire dict with new one"""
     # Arrange
     user_id = valid_object_id()
@@ -1329,7 +1553,11 @@ async def test_scenario_replace_entire_dict(mongo_session, mock_database, valid_
 
 
 @pytest.mark.asyncio
-async def test_scenario_mixed_changes(mongo_session, mock_database, valid_object_id):
+async def test_scenario_mixed_changes(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Mix of scalar, list, and dict changes"""
     # Arrange
     user_id = valid_object_id()
@@ -1368,7 +1596,11 @@ async def test_scenario_mixed_changes(mongo_session, mock_database, valid_object
 
 
 @pytest.mark.asyncio
-async def test_scenario_no_changes(mongo_session, mock_database, valid_object_id):
+async def test_scenario_no_changes(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Add entity but make no changes"""
     # Arrange
     user_id = valid_object_id()
@@ -1390,7 +1622,11 @@ async def test_scenario_no_changes(mongo_session, mock_database, valid_object_id
 
 
 @pytest.mark.asyncio
-async def test_scenario_datetime_field_update(mongo_session, mock_database, valid_object_id):
+async def test_scenario_datetime_field_update(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Update datetime field"""
     # Arrange
     user_id = valid_object_id()
@@ -1425,7 +1661,11 @@ async def test_scenario_datetime_field_update(mongo_session, mock_database, vali
 
 
 @pytest.mark.asyncio
-async def test_scenario_empty_list_to_populated_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_empty_list_to_populated_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Change empty list to populated"""
     # Arrange
     user_id = valid_object_id()
@@ -1452,7 +1692,11 @@ async def test_scenario_empty_list_to_populated_list(mongo_session, mock_databas
 
 
 @pytest.mark.asyncio
-async def test_scenario_empty_dict_to_populated_dict(mongo_session, mock_database, valid_object_id):
+async def test_scenario_empty_dict_to_populated_dict(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Change empty dict to populated"""
     # Arrange
     user_id = valid_object_id()
@@ -1479,7 +1723,11 @@ async def test_scenario_empty_dict_to_populated_dict(mongo_session, mock_databas
 
 
 @pytest.mark.asyncio
-async def test_scenario_list_with_duplicates(mongo_session, mock_database, valid_object_id):
+async def test_scenario_list_with_duplicates(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: List containing duplicate values"""
     # Arrange
     user_id = valid_object_id()
@@ -1508,7 +1756,11 @@ async def test_scenario_list_with_duplicates(mongo_session, mock_database, valid
 
 
 @pytest.mark.asyncio
-async def test_scenario_deeply_nested_structure(mongo_session, mock_database, valid_object_id):
+async def test_scenario_deeply_nested_structure(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Very deeply nested structure (3+ levels)"""
     # Arrange
     user_id = valid_object_id()
@@ -1542,13 +1794,19 @@ async def test_scenario_deeply_nested_structure(mongo_session, mock_database, va
 
     # Assert
     set_fields = mock_collection.update_one.call_args[0][1]["$set"]
-    engineering = set_fields["metadata"]["company"]["departments"]["engineering"]
+    metadata = set_fields["metadata"]
+    company_depts = metadata["company"]["departments"]
+    engineering = company_depts["engineering"]
     assert engineering["teams"] == ["backend", "frontend", "devops"]
     assert engineering["lead"] == "Charlie"
 
 
 @pytest.mark.asyncio
-async def test_scenario_multiple_flushes(mongo_session, mock_database, valid_object_id):
+async def test_scenario_multiple_flushes(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Multiple flushes with different changes"""
     # Arrange
     user_id = valid_object_id()
@@ -1570,14 +1828,16 @@ async def test_scenario_multiple_flushes(mongo_session, mock_database, valid_obj
     user.age = 26
     await mongo_session.flush()
 
-    first_call_set_fields = mock_collection.update_one.call_args_list[0][0][1]["$set"]
+    first_call_args = mock_collection.update_one.call_args_list[0][0][1]
+    first_call_set_fields = first_call_args["$set"]
     assert first_call_set_fields == {"age": 26}
 
     # Act & Assert - Second flush with new changes
     user.tags.append("python")
     await mongo_session.flush()
 
-    second_call_set_fields = mock_collection.update_one.call_args_list[1][0][1]["$set"]
+    second_call_args = mock_collection.update_one.call_args_list[1][0][1]
+    second_call_set_fields = second_call_args["$set"]
     assert second_call_set_fields == {"tags": ["python"]}
 
     # Total calls
@@ -1585,7 +1845,11 @@ async def test_scenario_multiple_flushes(mongo_session, mock_database, valid_obj
 
 
 @pytest.mark.asyncio
-async def test_scenario_boolean_field_toggle(mongo_session, mock_database, valid_object_id):
+async def test_scenario_boolean_field_toggle(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Toggle boolean field"""
     # Arrange
     product_id = valid_object_id()
@@ -1613,7 +1877,11 @@ async def test_scenario_boolean_field_toggle(mongo_session, mock_database, valid
 
 
 @pytest.mark.asyncio
-async def test_scenario_numeric_zero_values(mongo_session, mock_database, valid_object_id):
+async def test_scenario_numeric_zero_values(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Set numeric fields to zero"""
     # Arrange
     product_id = valid_object_id()
@@ -1640,7 +1908,11 @@ async def test_scenario_numeric_zero_values(mongo_session, mock_database, valid_
 
 
 @pytest.mark.asyncio
-async def test_scenario_batch_insert_and_update(mongo_session, mock_database, valid_object_id):
+async def test_scenario_batch_insert_and_update(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Mix of inserts and updates in one flush"""
     # Arrange
     existing_user_id = valid_object_id()
@@ -1681,12 +1953,18 @@ async def test_scenario_batch_insert_and_update(mongo_session, mock_database, va
     update_set_fields = mock_collection.update_one.call_args[0][1]["$set"]
     assert update_set_fields["age"] == 26
 
-# ====================== ДОПОЛНИТЕЛЬНЫЕ ИНТЕГРАЦИОННЫЕ ТЕСТЫ ======================
+
+# ====================== ДОПОЛНИТЕЛЬНЫЕ ИНТЕГРАЦИОННЫЕ ТЕСТЫ ================
 
 # 1. Optional / None поля
 
+
 @pytest.mark.asyncio
-async def test_scenario_optional_field_set_to_none(mongo_session, mock_database, valid_object_id):
+async def test_scenario_optional_field_set_to_none(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Set optional field to None"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", email="alice@test.com")
@@ -1707,7 +1985,11 @@ async def test_scenario_optional_field_set_to_none(mongo_session, mock_database,
 
 
 @pytest.mark.asyncio
-async def test_scenario_optional_field_from_none_to_value(mongo_session, mock_database, valid_object_id):
+async def test_scenario_optional_field_from_none_to_value(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Change None to actual value"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", email=None)
@@ -1729,8 +2011,13 @@ async def test_scenario_optional_field_from_none_to_value(mongo_session, mock_da
 
 # 2. Вложенные списки
 
+
 @pytest.mark.asyncio
-async def test_scenario_nested_list_modification(mongo_session, mock_database, valid_object_id):
+async def test_scenario_nested_list_modification(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: List containing lists"""
     user_id = valid_object_id()
     user = User(
@@ -1756,8 +2043,13 @@ async def test_scenario_nested_list_modification(mongo_session, mock_database, v
 
 # 3. Пустые строки и пробелы
 
+
 @pytest.mark.asyncio
-async def test_scenario_empty_string_to_whitespace(mongo_session, mock_database, valid_object_id):
+async def test_scenario_empty_string_to_whitespace(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Empty string vs whitespace string"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="")
@@ -1778,7 +2070,11 @@ async def test_scenario_empty_string_to_whitespace(mongo_session, mock_database,
 
 
 @pytest.mark.asyncio
-async def test_scenario_trim_string(mongo_session, mock_database, valid_object_id):
+async def test_scenario_trim_string(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: String with leading/trailing spaces"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="  Alice  ")
@@ -1800,8 +2096,13 @@ async def test_scenario_trim_string(mongo_session, mock_database, valid_object_i
 
 # 4. Числа с плавающей точкой и отрицательные значения
 
+
 @pytest.mark.asyncio
-async def test_scenario_float_precision(mongo_session, mock_database, valid_object_id):
+async def test_scenario_float_precision(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Float precision changes"""
     product_id = valid_object_id()
     product = Product(_id=product_id, title="Book", price=10.99)
@@ -1822,7 +2123,11 @@ async def test_scenario_float_precision(mongo_session, mock_database, valid_obje
 
 
 @pytest.mark.asyncio
-async def test_scenario_negative_numbers(mongo_session, mock_database, valid_object_id):
+async def test_scenario_negative_numbers(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Negative numbers"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", age=25)
@@ -1844,8 +2149,13 @@ async def test_scenario_negative_numbers(mongo_session, mock_database, valid_obj
 
 # 5. Большие коллекции
 
+
 @pytest.mark.asyncio
-async def test_scenario_large_list(mongo_session, mock_database, valid_object_id):
+async def test_scenario_large_list(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Large list (1000 items)"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", tags=[])
@@ -1866,7 +2176,11 @@ async def test_scenario_large_list(mongo_session, mock_database, valid_object_id
 
 
 @pytest.mark.asyncio
-async def test_scenario_large_dict(mongo_session, mock_database, valid_object_id):
+async def test_scenario_large_dict(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Large dict (1000 keys)"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", metadata={})
@@ -1888,8 +2202,13 @@ async def test_scenario_large_dict(mongo_session, mock_database, valid_object_id
 
 # 6. Unicode и спецсимволы
 
+
 @pytest.mark.asyncio
-async def test_scenario_unicode_strings(mongo_session, mock_database, valid_object_id):
+async def test_scenario_unicode_strings(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Unicode characters in strings"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice")
@@ -1910,7 +2229,11 @@ async def test_scenario_unicode_strings(mongo_session, mock_database, valid_obje
 
 
 @pytest.mark.asyncio
-async def test_scenario_special_characters_in_dict_keys(mongo_session, mock_database, valid_object_id):
+async def test_scenario_special_characters_in_dict_keys(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Special characters in dict keys"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", metadata={})
@@ -1933,13 +2256,19 @@ async def test_scenario_special_characters_in_dict_keys(mongo_session, mock_data
     set_fields = mock_collection.update_one.call_args[0][1]["$set"]
     assert "key-with-dash" in set_fields["metadata"]
     assert "key_with_underscore" in set_fields["metadata"]
-    # ключ с точкой в реальной Mongo приведет к ошибке, но здесь мы лишь проверяем формирование update-документа
+    # ключ с точкой в реальной Mongo приведет к ошибке,
+    # но здесь мы лишь проверяем формирование update-документа
 
 
 # 7. Изменение типа/значения поля (последнее значение)
 
+
 @pytest.mark.asyncio
-async def test_scenario_multiple_modifications_same_field(mongo_session, mock_database, valid_object_id):
+async def test_scenario_multiple_modifications_same_field(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """Scenario: Modify same field multiple times before flush"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", age=25)
@@ -1963,8 +2292,14 @@ async def test_scenario_multiple_modifications_same_field(mongo_session, mock_da
 
 # 8. Цикл: изменения, rollback, новые изменения
 
+
 @pytest.mark.asyncio
-async def test_scenario_changes_after_rollback(mongo_session, mock_database, mock_session, valid_object_id):
+async def test_scenario_changes_after_rollback(
+    mongo_session,
+    mock_database,
+    mock_session,
+    valid_object_id,
+):
     """Scenario: Make changes, rollback, make new changes"""
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", age=25)
@@ -1993,8 +2328,13 @@ async def test_scenario_changes_after_rollback(mongo_session, mock_database, moc
 
 # ====================== ТЕСТЫ КОТОРЫЕ СЛОМАЮТ ПОВЕДЕНИЕ ======================
 
+
 @pytest.mark.asyncio
-async def test_breaking_concurrent_modification_same_entity(mongo_session, mock_database, valid_object_id):
+async def test_breaking_concurrent_modification_same_entity(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Concurrent modification of same entity reference
 
@@ -2037,12 +2377,17 @@ async def test_breaking_concurrent_modification_same_entity(mongo_session, mock_
 
     # Проверяем количество вызовов update_one
     # ДОЛЖНО быть 2 вызова (для каждого ID), но скорее всего будет 1
-    assert mock_collection.update_one.call_count == 2, \
-        f"Expected 2 updates, got {mock_collection.update_one.call_count}"
+    assert (
+        mock_collection.update_one.call_count == 2
+    ), f"Expected 2 updates, got {mock_collection.update_one.call_count}"
 
 
 @pytest.mark.asyncio
-async def test_breaking_snapshot_reference_pollution(mongo_session, mock_database, valid_object_id):
+async def test_breaking_snapshot_reference_pollution(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Snapshot pollution через shared mutable objects
 
@@ -2058,9 +2403,18 @@ async def test_breaking_snapshot_reference_pollution(mongo_session, mock_databas
     shared_metadata = {"role": "admin", "level": 5}
     shared_tags = ["python", "fastapi"]
 
-    user1 = User(_id=user_id_1, name="Alice", metadata=shared_metadata, tags=shared_tags)
-    user2 = User(_id=user_id_2, name="Bob", metadata=shared_metadata, tags=shared_tags)
-
+    user1 = User(
+        _id=user_id_1,
+        name="Alice",
+        metadata=shared_metadata,
+        tags=shared_tags,
+    )
+    user2 = User(
+        _id=user_id_2,
+        name="Bob",
+        metadata=shared_metadata,
+        tags=shared_tags,
+    )
     mock_collection = AsyncMock()
     mock_result = MagicMock()
     mock_result.modified_count = 1
@@ -2104,7 +2458,11 @@ async def test_breaking_snapshot_reference_pollution(mongo_session, mock_databas
 
 
 @pytest.mark.asyncio
-async def test_breaking_flush_after_exception_state_corruption(mongo_session, mock_database, valid_object_id):
+async def test_breaking_flush_after_exception_state_corruption(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: State corruption after partial flush failure
 
@@ -2137,7 +2495,10 @@ async def test_breaking_flush_after_exception_state_corruption(mongo_session, mo
     mock_database.__getitem__.return_value = mock_collection
 
     # Пытаемся flush
-    with pytest.raises(Exception, match="Database connection lost"):
+    with pytest.raises(
+        Exception,
+        match="Database connection lost",
+    ):
         await mongo_session.flush()
 
     # ПРОБЛЕМА: Что со snapshot после ошибки?
@@ -2145,8 +2506,8 @@ async def test_breaking_flush_after_exception_state_corruption(mongo_session, mo
     # user2 не обновился в БД, но snapshot мог измениться?
 
     # Проверяем состояние snapshots
-    snapshot1 = mongo_session._original_snapshots[User][user_id_1]
-    snapshot2 = mongo_session._original_snapshots[User][user_id_2]
+    _snapshot1 = mongo_session._original_snapshots[User][user_id_1]
+    _snapshot2 = mongo_session._original_snapshots[User][user_id_2]
 
     # BREAKING: Snapshot может быть в неконсистентном состоянии
     # Либо оба обновились (неправильно, т.к. user2 упал)
@@ -2163,14 +2524,20 @@ async def test_breaking_flush_after_exception_state_corruption(mongo_session, mo
     # Но из-за некорректного snapshot может обновиться всё снова
 
 
-# ====================== БОЛЕЕ АГРЕССИВНЫЕ BREAKING ТЕСТЫ ======================
+# ===================== БОЛЕЕ АГРЕССИВНЫЕ BREAKING ТЕСТЫ =====================
+
 
 @pytest.mark.asyncio
-async def test_breaking_modify_entity_between_add_and_flush(mongo_session, mock_database, valid_object_id):
+async def test_breaking_modify_entity_between_add_and_flush(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Изменение entity между add() и flush() должно игнорироваться
 
-    Проблема: Если изменить entity ПЕРЕД add(), то snapshot захватит уже измененное состояние.
+    Проблема: Если изменить entity ПЕРЕД add(),
+    то snapshot захватит уже измененное состояние.
     Это означает, что flush() не увидит изменений.
     """
     user_id = valid_object_id()
@@ -2202,7 +2569,8 @@ async def test_breaking_modify_entity_between_add_and_flush(mongo_session, mock_
     mock_collection.update_one.assert_called_once()
     set_fields = mock_collection.update_one.call_args[0][1]["$set"]
 
-    # BREAKING: Эти изменения должны быть относительно ОРИГИНАЛЬНОГО состояния (Alice, 25)
+    # BREAKING: Эти изменения должны быть относительно
+    # ОРИГИНАЛЬНОГО состояния (Alice, 25)
     # А не того, что было на момент add() (Bob, 26)
     assert set_fields["age"] == 30
     assert set_fields["name"] == "Charlie"
@@ -2213,7 +2581,11 @@ async def test_breaking_modify_entity_between_add_and_flush(mongo_session, mock_
 
 
 @pytest.mark.asyncio
-async def test_breaking_missing_deepcopy_exposes_mutation(mongo_session, mock_database, valid_object_id):
+async def test_breaking_missing_deepcopy_exposes_mutation(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Проверка что deepcopy действительно работает
 
@@ -2251,9 +2623,14 @@ async def test_breaking_missing_deepcopy_exposes_mutation(mongo_session, mock_da
 
 
 @pytest.mark.asyncio
-async def test_breaking_update_one_returns_zero_modified(mongo_session, mock_database, valid_object_id):
+async def test_breaking_update_one_returns_zero_modified(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
-    BREAKING TEST: update_one возвращает modified_count = 0 (документ не найден)
+    BREAKING TEST: update_one возвращает modified_count = 0
+    (документ не найден)
 
     Проблема: Если документ был удален между add() и flush(),
     update_one вернет modified_count=0, но система не среагирует.
@@ -2286,7 +2663,10 @@ async def test_breaking_update_one_returns_zero_modified(mongo_session, mock_dat
 
 
 @pytest.mark.asyncio
-async def test_breaking_entity_without_id_field(mongo_session, mock_database):
+async def test_breaking_entity_without_id_field(
+    mongo_session,
+    mock_database,
+):
     """FIXED: Test entity without _id field raises EntityMissingIdError"""
 
     @dataclass
@@ -2300,18 +2680,23 @@ async def test_breaking_entity_without_id_field(mongo_session, mock_database):
     entity = EntityWithoutId(name="test", value=123)
 
     # Теперь должна быть правильная ошибка
-    with pytest.raises(EntityMissingIdError):
+    with pytest.raises(
+        EntityMissingIdError,
+    ):
         mongo_session.add(entity)
 
 
 @pytest.mark.asyncio
-async def test_breaking_snapshot_deepcopy_with_unpicklable_object(mongo_session, mock_database, valid_object_id):
+async def test_breaking_snapshot_deepcopy_with_unpicklable_object(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Entity содержит объект, который нельзя скопировать
 
     Некоторые объекты (file handles, locks, connections) нельзя deepcopy.
     """
-    import threading
 
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice")
@@ -2323,21 +2708,33 @@ async def test_breaking_snapshot_deepcopy_with_unpicklable_object(mongo_session,
     }
 
     # BREAKING: deepcopy упадет с ошибкой
-    with pytest.raises(TypeError, match="cannot pickle"):
+    with pytest.raises(
+        TypeError,
+        match="cannot pickle",
+    ):
         mongo_session.add(user)
 
 
 @pytest.mark.asyncio
-async def test_breaking_retort_serialization_changes_structure(mongo_session, mock_database, valid_object_id):
+async def test_breaking_retort_serialization_changes_structure(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Retort изменяет структуру при сериализации
 
-    Если Retort добавляет/удаляет поля, сравнение snapshot может быть некорректным.
+    Если Retort добавляет/удаляет поля,
+    сравнение snapshot может быть некорректным.
     """
     user_id = valid_object_id()
 
     # Создаем entity с datetime
-    user = User(_id=user_id, name="Alice", created_at=datetime(2025, 1, 1, 12, 0, 0))
+    user = User(
+        _id=user_id,
+        name="Alice",
+        created_at=datetime(2025, 1, 1, 12, 0, 0),
+    )
 
     mongo_session.add(user)
 
@@ -2374,22 +2771,31 @@ async def test_breaking_retort_serialization_changes_structure(mongo_session, mo
 
 
 @pytest.mark.asyncio
-async def test_breaking_massive_concurrent_updates(mongo_session, mock_database, valid_object_id):
+async def test_breaking_massive_concurrent_updates(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
     """
     BREAKING TEST: Стресс-тест с большим количеством entities
 
-    100+ entities с изменениями могут выявить проблемы производительности или памяти.
+    100+ entities с изменениями могут
+    выявить проблемы производительности или памяти.
     """
     # Создаем 100 пользователей
     users = []
-    for i in range(100):
+    for i in range(
+        100,
+    ):
         user_id = valid_object_id()
         user = User(_id=user_id, name=f"User{i}", age=20 + i)
         users.append(user)
         mongo_session.add(user)
 
     # Изменяем каждого
-    for i, user in enumerate(users):
+    for i, user in enumerate(
+        users,
+    ):
         user.age += 10
         user.tags.append(f"tag_{i}")
         user.metadata = {"index": i, "data": [1, 2, 3] * 100}  # Большой объект
@@ -2407,10 +2813,11 @@ async def test_breaking_massive_concurrent_updates(mongo_session, mock_database,
     assert mock_collection.update_one.call_count == 100
 
     # Проверяем что все snapshots обновились
-    for i, user in enumerate(users):
+    for i, user in enumerate(
+        users,
+    ):
         snapshot = mongo_session._original_snapshots[User][user._id]
         assert snapshot["age"] == 30 + i
-
 
 
 if __name__ == "__main__":
