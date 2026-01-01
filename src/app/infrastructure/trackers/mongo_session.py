@@ -1,3 +1,4 @@
+import copy
 import logging
 from dataclasses import dataclass, field, is_dataclass
 from typing import Any, TypeVar
@@ -10,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorDatabase
 from app.application.change_tracker import (
     ChangeTrackerError,
     CollectionMappingNotFoundError,
+    EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
 )
@@ -53,8 +55,11 @@ class MongoSession:
         if entity_type not in self.collection_mapping:
             raise CollectionMappingNotFoundError(entity_type)
 
+        if not hasattr(entity, "_id"):
+            raise EntityMissingIdError(entity_type)
+
         # Handle entities without _id (pending insert)
-        if not hasattr(entity, "_id") or entity._id is None:  # noqa: SLF001
+        if entity._id is None:  # noqa: SLF001
             if entity_type not in self._pending_inserts:
                 self._pending_inserts[entity_type] = []
             # Avoid duplicates
@@ -78,7 +83,8 @@ class MongoSession:
 
         # Store original snapshot only if not already tracked
         if entity_id not in self._original_snapshots[entity_type]:
-            original_dump = self.retort.dump(entity)
+            # copy because of dict mutating
+            original_dump = copy.deepcopy(self.retort.dump(entity))
             original_dump.pop("_id", None)
             self._original_snapshots[entity_type][entity_id] = original_dump
             logger.debug(
