@@ -1,8 +1,6 @@
 import copy
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, fields, is_dataclass
-from typing import Any, ClassVar, SupportsIndex
+from typing import Any, SupportsIndex
 from weakref import ref
 
 from bson import ObjectId
@@ -153,6 +151,9 @@ class TrackedObject:
         return repr(obj)
 
 
+# ============= Исключения =============
+
+
 class DatabaseNotSetError(ValueError):
     """Ошибка при отсутствии подключения к БД"""
 
@@ -169,14 +170,127 @@ class CollectionNotMappedError(ValueError):
             f"Please add it to collection_mapping.",
         )
 
+
+class ClassAlreadyInstrumentedError(RuntimeError):
+    """Ошибка когда класс уже инструментирован"""
+
+    def __init__(self, cls: type) -> None:
+        super().__init__(
+            f"Class {cls.__name__} is already instrumented for tracking. "
+            f"Cannot instrument the same class twice.",
+        )
+
+
+class ClassNotInstrumentedError(RuntimeError):
+    """Ошибка когда класс не инструментирован"""
+
+    def __init__(self, cls: type) -> None:
+        super().__init__(
+            f"Class {cls.__name__} is not instrumented for tracking. "
+            f"Call instrument_class() before using it with Session.",
+        )
+
+
+# ============= Инструментация классов =============
+
+
+# Маркер для проверки инструментированности класса
+_INSTRUMENTED_MARKER = "__session_instrumented__"
+
+
+def is_class_instrumented(cls: type) -> bool:
+    """Проверяет, инструментирован ли класс для отслеживания"""
+    return hasattr(cls, _INSTRUMENTED_MARKER)
+
+
+def instrument_class(cls: type) -> None:
+    """
+    Инструментирует класс для отслеживания изменений.
+
+    Raises:
+        ClassAlreadyInstrumentedError: Если класс уже инструментирован
+    """
+    if is_class_instrumented(cls):
+        raise ClassAlreadyInstrumentedError(cls)
+
+    # Сохраняем оригинальный __setattr__
+    original_setattr = cls.__setattr__
+
+    def tracking_setattr(instance: Any, name: str, value: Any) -> None:
+        instance_id = id(instance)
+        session_ref = getattr(instance, "_session_ref", None)
+
+        if session_ref is not None:
+            session = session_ref()
+            if session is not None:
+                session_states = session._instance_states  # noqa: SLF001
+                if instance_id in session_states and not name.startswith("_"):
+                    state = session_states[instance_id]
+
+                    if hasattr(instance, name):
+                        old_value = getattr(instance, name)
+                        state.mark_changed(name, old_value)
+
+                    if isinstance(value, list) and not isinstance(
+                        value,
+                        TrackedList,
+                    ):
+                        value = TrackedList(
+                            value,
+                            instance,
+                            name,
+                            session_states,
+                        )
+
+        original_setattr(instance, name, value)  # type: ignore[call-arg]
+
+    def get_changed_fields(self: Any) -> set[str]:
+        instance_id = id(self)
+        session_ref = getattr(self, "_session_ref", None)
+
+        if session_ref is not None:
+            session = session_ref()
+            if (
+                session is not None
+                and instance_id in session._instance_states  # noqa: SLF001
+            ):
+                states: dict[int, InstanceState] = (
+                    session._instance_states  # noqa: SLF001
+                )
+                return states[instance_id].get_changed_fields()
+        return set()
+
+    def get_original_value(self: Any, field_name: str) -> Any:
+        instance_id = id(self)
+        session_ref = getattr(self, "_session_ref", None)
+
+        if session_ref is not None:
+            session = session_ref()
+            if (
+                session is not None
+                and instance_id in session._instance_states  # noqa: SLF001
+            ):
+                states: dict[int, InstanceState] = (
+                    session._instance_states  # noqa: SLF001
+                )
+                return states[instance_id].get_original_value(field_name)
+        return None
+
+    # Патчим класс
+    cls.__setattr__ = tracking_setattr  # type: ignore[assignment]
+    cls.get_changed_fields = get_changed_fields  # type: ignore[attr-defined]
+    cls.get_original_value = get_original_value  # type: ignore[attr-defined]
+
+    # Помечаем класс как инструментированный
+    setattr(cls, _INSTRUMENTED_MARKER, True)
+
+
 class Session:
     """
     Session в стиле SQLAlchemy с отслеживанием изменений и MongoDB
 
     Каждая сессия создается для одного запроса и имеет собственное состояние.
     """
-
-    _original_setattrs: ClassVar[dict[type, Any]] = {}
 
     def __init__(
         self,
@@ -199,15 +313,21 @@ class Session:
         self._tracked_instances: list[Any] = []
 
     def add(self, instance: Any) -> Any:
-        """Добавляет экземпляр под отслеживание"""
+        """
+        Добавляет экземпляр под отслеживание
+
+        Raises:
+            ClassNotInstrumentedError: Если класс не инструментирован
+        """
         cls = instance.__class__
+
+        if not is_class_instrumented(cls):
+            raise ClassNotInstrumentedError(cls)
+
         instance_id = id(instance)
 
         if instance_id not in self._instance_states:
             self._instance_states[instance_id] = InstanceState(instance)
-
-        if cls not in Session._original_setattrs:
-            self._instrument_class(cls)
 
         self._tracked_instances.append(instance)
         self._wrap_mutable_fields(instance)
@@ -237,92 +357,6 @@ class Session:
             except (AttributeError, TypeError):
                 # Игнорируем ошибки при обходе полей (property, slots)
                 pass
-
-    def _instrument_class(self, target_class: type) -> None:
-        """Инструментирует класс для отслеживания изменений"""
-        original_setattr = target_class.__setattr__
-        Session._original_setattrs[target_class] = original_setattr
-
-        def tracking_setattr(instance: Any, name: str, value: Any) -> None:
-            instance_id = id(instance)
-            session_ref = getattr(instance, "_session_ref", None)
-
-            if session_ref is not None:
-                session = session_ref()
-                if session is not None:
-                    session_states = session._instance_states  # noqa: SLF001
-                    if (
-                            instance_id in session_states
-                            and
-                            not name.startswith("_")
-                    ):
-                        state = session_states[instance_id]
-
-                        if hasattr(instance, name):
-                            old_value = getattr(instance, name)
-                            state.mark_changed(name, old_value)
-
-                        if isinstance(value, list) and not isinstance(
-                            value,
-                            TrackedList,
-                        ):
-                            value = TrackedList(
-                                value,
-                                instance,
-                                name,
-                                session_states,
-                            )
-
-            original_setattr(instance, name, value)  # type: ignore[call-arg]
-
-        # Динамическое присвоение методов
-        target_class.__setattr__ = tracking_setattr  # type: ignore[assignment]
-        target_class.get_changed_fields = self._create_get_changed_fields()  # type: ignore[attr-defined]
-        target_class.get_original_value = self._create_get_original_value()  # type: ignore[attr-defined]
-
-    @staticmethod
-    def _create_get_changed_fields() -> Callable[[Any], set[str]]:
-        """Создает метод get_changed_fields для класса"""
-
-        def get_changed_fields(self: Any) -> set[str]:
-            instance_id = id(self)
-            session_ref = getattr(self, "_session_ref", None)
-
-            if session_ref is not None:
-                session = session_ref()
-                if (
-                    session is not None
-                    and instance_id in session._instance_states  # noqa: SLF001
-                ):
-                    states: dict[int, InstanceState] = (
-                        session._instance_states   # noqa: SLF001
-                    )
-                    return states[instance_id].get_changed_fields()
-            return set()
-
-        return get_changed_fields
-
-    @staticmethod
-    def _create_get_original_value() -> Callable[[Any, str], Any]:
-        """Создает метод get_original_value для класса"""
-
-        def get_original_value(self: Any, field_name: str) -> Any:
-            instance_id = id(self)
-            session_ref = getattr(self, "_session_ref", None)
-
-            if session_ref is not None:
-                session = session_ref()
-                if (
-                    session is not None
-                    and instance_id in session._instance_states  # noqa: SLF001
-                ):
-                    states: dict[int, InstanceState] = (
-                        session._instance_states   # noqa: SLF001
-                    )
-                    return states[instance_id].get_original_value(field_name)
-            return None
-
-        return get_original_value
 
     def _get_collection_name(self, instance: Any) -> str:
         """Получает имя коллекции для экземпляра"""
@@ -399,9 +433,7 @@ class Session:
             return
 
         collection_name = self._get_collection_name(instance)
-        collection: AsyncIOMotorCollection[dict[str, Any]] = self.db[
-            collection_name
-        ]
+        collection: AsyncIOMotorCollection[dict[str, Any]] = self.db[collection_name]
 
         update_query = self.build_update_query(instance)
         if not update_query:
@@ -524,7 +556,11 @@ class Article:
     content: str
     _id: str | None = None
 
-    __collection_name__ = "blog_articles"
+
+# Инструментируем классы перед использованием
+instrument_class(Tag)
+instrument_class(User)
+instrument_class(Article)
 
 
 async def example_with_transaction() -> None:
@@ -573,7 +609,10 @@ async def example_simple_request() -> None:
     )
     db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
 
-    session = Session(db=db)
+    session = Session(
+        db=db,
+        collection_mapping={User: "users"},
+    )
 
     try:
         user = User(username="alice", email="alice@example.com")
@@ -589,106 +628,31 @@ async def example_simple_request() -> None:
     client.close()
 
 
-async def example_multiple_sessions() -> None:
-    """Демонстрация изоляции между сессиями"""
+async def example_uninstrumented_class() -> None:
+    """Пример ошибки при использовании неинструментированного класса"""
+
+    @dataclass
+    class UninstrumentedUser:
+        username: str
+
     client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
         "mongodb://localhost:27017",
     )
     db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
 
-    user1 = User(username="user1", email="user1@example.com")
-    user2 = User(username="user2", email="user2@example.com")
-
-    session1 = Session(db=db)
-    session2 = Session(db=db)
-
-    try:
-        session1.add(user1)
-        user1.username = "modified1"
-
-        session2.add(user2)
-        user2.username = "modified2"
-
-        await session1.commit()
-        await session2.commit()
-    finally:
-        session1.close()
-        session2.close()
-
-    client.close()
-
-
-async def example_with_rollback() -> None:
-    """Пример с откатом изменений"""
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
-        "mongodb://localhost:27017",
+    session = Session(
+        db=db,
+        collection_mapping={UninstrumentedUser: "users"},
     )
-    db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
-
-    session = Session(db=db)
 
     try:
-        user = User(
-            username="john",
-            email="john@example.com",
-            tags=[Tag("python")],
-        )
-        session.add(user)
-
-        user.username = "jane"
-        user.email = "jane@example.com"
-        user.tags.append(Tag("mongodb"))
-
-        session.rollback()
-
+        user = UninstrumentedUser(username="test")
+        session.add(user)  # Вызовет ClassNotInstrumentedError
+    except ClassNotInstrumentedError as e:
+        print(f"Error: {e}")
     finally:
         session.close()
-
-    client.close()
-
-
-async def example_api_endpoint_pattern() -> None:
-    """Типичный паттерн использования в FastAPI endpoint"""
-
-    @asynccontextmanager
-    async def get_session(
-        db: AsyncIOMotorDatabase[dict[str, Any]],
-        mongo_session: AsyncIOMotorClientSession | None = None,
-    ) -> AsyncIterator[Session]:
-        """Helper для создания сессии с автоматическим cleanup"""
-        session = Session(db=db, mongo_session=mongo_session)
-        try:
-            yield session
-        finally:
-            session.close()
-
-    client: AsyncIOMotorClient[dict[str, Any]] = AsyncIOMotorClient(
-        "mongodb://localhost:27017",
-    )
-    db: AsyncIOMotorDatabase[dict[str, Any]] = client.mydb
-
-    # Вариант 1: Без транзакции
-    async with get_session(db) as session:
-        user = User(username="api_user", email="api@example.com")
-        session.add(user)
-        user.username = "updated_user"
-        await session.commit()
-
-    # Вариант 2: С транзакцией
-    async with (
-        await client.start_session() as mongo_session,
-        mongo_session.start_transaction(),
-        get_session(db, mongo_session) as session,
-    ):
-        user = User(
-            username="transactional_user",
-            email="trans@example.com",
-        )
-        session.add(user)
-        user.username = "updated_trans_user"
-        await session.commit()
-
-    client.close()
+        client.close()
 
 
 if __name__ == "__main__":
@@ -696,6 +660,4 @@ if __name__ == "__main__":
 
     asyncio.run(example_simple_request())
     asyncio.run(example_with_transaction())
-    asyncio.run(example_multiple_sessions())
-    asyncio.run(example_with_rollback())
-    asyncio.run(example_api_endpoint_pattern())
+    asyncio.run(example_uninstrumented_class())

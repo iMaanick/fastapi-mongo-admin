@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.example import Session
+from app.example import Session, instrument_class
 
 # ============= Тестовые модели =============
 
@@ -52,6 +52,14 @@ class ComplexUser:
     _id: str | None = None
 
 
+# Инструментируем классы один раз при импорте модуля
+instrument_class(Tag)
+instrument_class(NestedTag)
+instrument_class(DeepTag)
+instrument_class(User)
+instrument_class(ComplexUser)
+
+
 # ============= Фикстуры =============
 
 
@@ -67,7 +75,14 @@ def mock_db() -> Mock:
 @pytest.fixture
 def session(mock_db: Mock) -> Any:
     """Создает новую сессию для каждого теста"""
-    s = Session(db=mock_db)
+    s = Session(
+        db=mock_db,
+        collection_mapping={
+            Tag: "tags",
+            User: "users",
+            ComplexUser: "complex_users",
+        },
+    )
     yield s
     s.close()
 
@@ -333,7 +348,10 @@ class TestEdgeCases:
             username: str | None = None
             tags: list[Any] | None = None
 
+        instrument_class(NullableUser)
+
         user = NullableUser()
+        session.collection_mapping[NullableUser] = "nullable_users"
         session.add(user)
 
         user.username = "john"
@@ -393,10 +411,13 @@ class TestEdgeCases:
             name: str
             children: list[Any] = field(default_factory=list)
 
+        instrument_class(Node)
+
         root = Node("root")
         child = Node("child")
         root.children.append(child)
 
+        session.collection_mapping[Node] = "nodes"
         session.add(root)
         root.children.append(Node("new"))
 
@@ -431,7 +452,10 @@ class TestEdgeCases:
             is_active: bool = False
             is_admin: bool = False
 
+        instrument_class(FlagUser)
+
         user = FlagUser()
+        session.collection_mapping[FlagUser] = "flag_users"
         session.add(user)
 
         user.is_active = True
@@ -446,7 +470,10 @@ class TestEdgeCases:
             age: int = 0
             balance: float = 0.0
 
+        instrument_class(NumericUser)
+
         user = NumericUser()
+        session.collection_mapping[NumericUser] = "numeric_users"
         session.add(user)
 
         user.age = 25
@@ -501,8 +528,14 @@ class TestMultipleSessions:
 
     def test_sessions_are_isolated(self, mock_db: Mock) -> None:
         """Две сессии должны быть изолированы друг от друга"""
-        session1 = Session(db=mock_db)
-        session2 = Session(db=mock_db)
+        session1 = Session(
+            db=mock_db,
+            collection_mapping={User: "users"},
+        )
+        session2 = Session(
+            db=mock_db,
+            collection_mapping={User: "users"},
+        )
 
         try:
             user1 = User(username="user1", email="user1@example.com")
@@ -525,8 +558,14 @@ class TestMultipleSessions:
 
     def test_object_in_multiple_sessions(self, mock_db: Mock) -> None:
         """Один объект может быть добавлен в разные сессии"""
-        session1 = Session(db=mock_db)
-        session2 = Session(db=mock_db)
+        session1 = Session(
+            db=mock_db,
+            collection_mapping={User: "users"},
+        )
+        session2 = Session(
+            db=mock_db,
+            collection_mapping={User: "users"},
+        )
 
         try:
             user = User(username="shared", email="shared@example.com")
@@ -623,7 +662,7 @@ class TestBuildUpdateQuery:
         """Поле _id исключается из update"""
         user = User(username="john", email="john@example.com", _id="123")
         session.add(user)
-        user._id = "456"  # noqa: SLF001
+        object.__setattr__(user, "_id", "456")
         user.username = "jane"
 
         query = session.build_update_query(user)
