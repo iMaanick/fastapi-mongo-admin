@@ -22,16 +22,19 @@ class InstanceState:
 
     def mark_changed(self, field_name: str, original_value: Any) -> None:
         if field_name not in self.changed_fields:
-            if isinstance(original_value, list | dict):
+            if isinstance(original_value, TrackedObject):
+                # ✅ Разворачиваем TrackedObject перед копированием
+                obj = object.__getattribute__(original_value, "_obj")
+                self.original_values[field_name] = copy.deepcopy(obj)
+            elif isinstance(original_value, list | dict):
                 if hasattr(original_value, "_unwrap_for_copy"):
-                    # ✅ _unwrap_for_copy уже возвращает копию
                     self.original_values[field_name] = original_value._unwrap_for_copy(
-                        original_value
+                        original_value,
                     )
                 else:
                     self.original_values[field_name] = copy.deepcopy(original_value)
             else:
-                self.original_values[field_name] = original_value
+                self.original_values[field_name] = copy.deepcopy(original_value)
         self.changed_fields.add(field_name)
 
     def get_changed_fields(self) -> set[str]:
@@ -90,7 +93,7 @@ class TrackedList(list[Any]):
                         field_name,
                         session_instance_states,
                         is_nested=True,
-                    )
+                    ),
                 )
             else:
                 result.append(item)
@@ -153,7 +156,7 @@ class TrackedList(list[Any]):
                         self._field_name,
                         self._session_instance_states,
                         is_nested=True,
-                    )
+                    ),
                 )
             elif hasattr(item, "__dict__") and not isinstance(item, TrackedObject):
                 wrapped_items.append(TrackedObject(item, self))
@@ -302,6 +305,58 @@ class TrackedObject:
             parent._mark_changed()  # noqa: SLF001
         elif isinstance(parent, TrackedObject):
             parent._mark_parent_changed()  # noqa: SLF001
+        # ✅ ДОБАВИТЬ: Поддержка root instance
+        else:
+            # parent - это root instance (User)
+            self._mark_root_instance_changed()
+
+    def _mark_root_instance_changed(self) -> None:
+        """Отмечает изменение в корневом instance"""
+        parent = object.__getattribute__(self, "_parent")
+
+        if not hasattr(parent, "_session_ref"):
+            return
+
+        session_ref = getattr(parent, "_session_ref", None)
+        if session_ref is None:
+            return
+
+        session = session_ref()
+        if session is None:
+            return
+
+        instance_id = id(parent)
+        if instance_id not in session._instance_states:
+            return
+
+        # Находим имя поля которое содержит этот объект
+        field_name = self._find_field_name_in_parent(parent)
+        if field_name:
+            state = session._instance_states[instance_id]
+            state.changed_fields.add(field_name)
+
+    def _find_field_name_in_parent(self, parent: Any) -> str | None:
+        """Находит имя поля в parent которое содержит этот TrackedObject"""
+        obj = object.__getattribute__(self, "_obj")
+
+        for field_name in dir(parent):
+            if field_name.startswith("_"):
+                continue
+            try:
+                value = getattr(parent, field_name)
+
+                # ✅ Проверяем и TrackedObject и оригинальный объект
+                if isinstance(value, TrackedObject):
+                    wrapped_obj = object.__getattribute__(value, "_obj")
+                    if wrapped_obj is obj or value is self:
+                        return field_name
+                elif value is obj:
+                    return field_name
+
+            except (AttributeError, TypeError):
+                pass
+
+        return None
 
     def __repr__(self) -> str:
         obj = object.__getattribute__(self, "_obj")
@@ -523,15 +578,16 @@ class Session:
         """Оборачивает mutable поля в отслеживаемые прокси"""
         object.__setattr__(instance, "_session_ref", ref(self))
 
+        instance_id = id(instance)
+
         for field_name in dir(instance):
             if field_name.startswith("_"):
                 continue
             try:
                 value = getattr(instance, field_name)
-                if isinstance(value, list) and not isinstance(
-                    value,
-                    TrackedList,
-                ):
+
+                # ✅ Оборачиваем списки
+                if isinstance(value, list) and not isinstance(value, TrackedList):
                     tracked_list = TrackedList(
                         value,
                         instance,
@@ -539,6 +595,21 @@ class Session:
                         self._instance_states,
                     )
                     object.__setattr__(instance, field_name, tracked_list)
+
+                # ✅ Оборачиваем вложенные объекты
+                elif (
+                        hasattr(value, "__dict__")
+                        and not isinstance(value, TrackedObject)
+                        and is_dataclass(value)
+                ):
+                    # ✅ ВАЖНО: Сохраняем оригинал ДО обертки
+                    state = self._instance_states[instance_id]
+                    if field_name not in state.original_values:
+                        state.original_values[field_name] = copy.deepcopy(value)
+
+                    tracked_obj = TrackedObject(value, instance)
+                    object.__setattr__(instance, field_name, tracked_obj)
+
             except (AttributeError, TypeError):
                 # Игнорируем ошибки при обходе полей (property, slots)
                 pass

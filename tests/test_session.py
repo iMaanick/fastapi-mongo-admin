@@ -8,7 +8,6 @@ import pytest
 
 from app.example import Session, instrument_class
 
-
 # ============= Тестовые модели =============
 
 
@@ -870,7 +869,7 @@ class TestNestedLists:
 
         assert "tags" in simple_user.get_changed_fields()
         # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
-        assert hasattr(simple_user.tags[0], 'title')
+        assert hasattr(simple_user.tags[0], "title")
         assert simple_user.tags[0].title == "python"
         assert isinstance(simple_user.tags[1], list)
         assert isinstance(simple_user.tags[1][1], Tag)
@@ -909,7 +908,7 @@ class TestNestedLists:
 
         assert "tags" in simple_user.get_changed_fields()
         # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
-        assert hasattr(simple_user.tags[0], 'title')
+        assert hasattr(simple_user.tags[0], "title")
         assert simple_user.tags[0].title == "python"
         assert isinstance(simple_user.tags[1][1], Tag)
         assert isinstance(simple_user.tags[1][2][1], Tag)
@@ -1062,11 +1061,11 @@ class TestNestedLists:
                 [
                     [
                         [
-                            "level5"
-                        ]
-                    ]
-                ]
-            ]
+                            "level5",
+                        ],
+                    ],
+                ],
+            ],
         ]
 
         assert "tags" in simple_user.get_changed_fields()
@@ -1151,8 +1150,8 @@ class TestNestedLists:
             username="test",
             two=[
                 Two(data=[[1, 2], [3, 4]]),
-                Two(data=[[5, 6]])
-            ]
+                Two(data=[[5, 6]]),
+            ],
         )
 
         session.collection_mapping[One] = "ones"
@@ -1181,6 +1180,45 @@ class TestNestedLists:
         serialized = query["$set"]["two"]
         assert serialized[0]["data"][0] == [1, 2, 999]
 
+    def test_nested_object_field_modification(
+            self,
+            session: Any,
+    ) -> None:
+
+        @dataclass
+        class Profile:
+            bio: str
+            age: int
+
+        @dataclass
+        class User:
+            username: str
+            profile: Profile
+            _id: str | None = None
+
+        instrument_class(Profile)
+        instrument_class(User)
+
+        user = User(
+            username="test",
+            profile=Profile(bio="Original bio", age=25),
+        )
+
+        session.collection_mapping[User] = "users"
+        session.add(user)
+
+        user.profile.bio = "New bio"
+
+        assert "profile" in user.get_changed_fields(), (
+            "Nested object field modification is not tracked!"
+        )
+
+        assert user.profile.bio == "New bio"
+
+        query = session.build_update_query(user)
+        assert query is not None, "Update query should be generated"
+        assert "profile" in query["$set"], "profile should be in $set"
+
 
 class TestNestedListsEdgeCases:
     """Граничные случаи для вложенных списков"""
@@ -1199,7 +1237,7 @@ class TestNestedListsEdgeCases:
 
         assert "tags" in simple_user.get_changed_fields()
         # Проверяем, что это TrackedObject, обёрнутый вокруг Tag
-        assert hasattr(simple_user.tags[0], 'title')
+        assert hasattr(simple_user.tags[0], "title")
         assert simple_user.tags[0].title == "python"
         assert isinstance(simple_user.tags[1][0], Tag)
         assert isinstance(simple_user.tags[1][1][0], Tag)
