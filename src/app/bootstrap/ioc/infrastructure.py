@@ -15,6 +15,7 @@ from motor.motor_asyncio import (
 from app.application.change_tracker import ChangeTracker
 from app.bootstrap.configs import MongoDBConfig
 from app.domain.model import User
+from app.example import Session
 from app.infrastructure.db.change_tracker import MongoChangeTracker
 
 logger = logging.getLogger(__name__)
@@ -98,4 +99,18 @@ class InfrastructureProvider(Provider):
             database=database,
             retort=retort,
             session=session,
+        )
+
+    @provide(scope=Scope.REQUEST)
+    def get_new_change_tracker(
+        self,
+        database: AsyncIOMotorDatabase[dict[str, Any]],
+        session: AsyncIOMotorClientSession,
+    ) -> Session:
+        return Session(
+            db=database,
+            mongo_session=session,
+            collection_mapping={
+                User: "example",
+            },
         )

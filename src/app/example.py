@@ -414,13 +414,12 @@ class Session:
         return {"$set": set_operations} if set_operations else None
 
     async def commit(self) -> None:
-        """Сохраняет все изменения в MongoDB"""
+        """Сохраняет все изменения в MongoDB и коммитит транзакцию"""
         if self.db is None:
             raise DatabaseNotSetError
 
         try:
-            for instance in self._tracked_instances:
-                await self._commit_instance(instance)
+            await self.flush()
 
             if self.mongo_session and self.mongo_session.in_transaction:
                 await self.mongo_session.commit_transaction()
@@ -514,8 +513,12 @@ class Session:
         object.__setattr__(instance, "_id", result.inserted_id)
 
     async def flush(self) -> None:
-        """Синоним для commit"""
-        await self.commit()
+        """Сохраняет изменения в БД без коммита транзакции"""
+        if self.db is None:
+            raise DatabaseNotSetError
+
+        for instance in self._tracked_instances:
+            await self._commit_instance(instance)
 
     async def rollback(self) -> None:
         """Откатывает изменения"""

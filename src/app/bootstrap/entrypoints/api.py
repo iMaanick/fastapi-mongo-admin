@@ -14,6 +14,8 @@ from starlette_admin import BaseAdmin
 from app.bootstrap.configs import load_settings
 from app.bootstrap.ioc.containers import fastapi_container
 from app.domain.course import Course
+from app.domain.model import User
+from app.example import instrument_class
 from app.infrastructure.log.main import configure_logging
 from app.presentation.admin.mongo_course_view import MongoCourseView
 from app.presentation.admin.mongo_view import MongoUserView
@@ -29,6 +31,7 @@ def init_routers(app: FastAPI) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    instrument_class(User)
     yield
     await app.state.dishka_container.close()
 
