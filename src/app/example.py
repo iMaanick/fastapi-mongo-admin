@@ -418,8 +418,17 @@ class Session:
         if self.db is None:
             raise DatabaseNotSetError
 
-        for instance in self._tracked_instances:
-            await self._commit_instance(instance)
+        try:
+            for instance in self._tracked_instances:
+                await self._commit_instance(instance)
+
+            if self.mongo_session and self.mongo_session.in_transaction:
+                await self.mongo_session.commit_transaction()
+        except Exception:
+            # При ошибке откатываем транзакцию
+            if self.mongo_session and self.mongo_session.in_transaction:
+                await self.mongo_session.abort_transaction()
+            raise
 
     async def _commit_instance(self, instance: Any) -> None:
         """Сохраняет изменения одного экземпляра"""
@@ -494,10 +503,15 @@ class Session:
         """Синоним для commit"""
         await self.commit()
 
-    def rollback(self) -> None:
+    async def rollback(self) -> None:
         """Откатывает изменения"""
+        # Откатываем изменения в объектах
         for instance in self._tracked_instances:
             self._rollback_instance(instance)
+
+        # Откатываем MongoDB транзакцию если она есть
+        if self.mongo_session and self.mongo_session.in_transaction:
+            await self.mongo_session.abort_transaction()
 
     def _rollback_instance(self, instance: Any) -> None:
         """Откатывает изменения одного экземпляра"""

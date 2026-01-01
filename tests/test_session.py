@@ -662,7 +662,7 @@ class TestBuildUpdateQuery:
         """Поле _id исключается из update"""
         user = User(username="john", email="john@example.com", _id="123")
         session.add(user)
-        object.__setattr__(user, "_id", "456")
+        user._id = "456"
         user.username = "jane"
 
         query = session.build_update_query(user)
