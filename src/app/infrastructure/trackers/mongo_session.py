@@ -44,6 +44,10 @@ class MongoSession:
         default_factory=dict,
         init=False,
     )
+    _pending_deletes: dict[type, set[str]] = field(
+        default_factory=dict,
+        init=False,
+    )
 
     def add(self, entity: T) -> None:
         """Track a single entity for change detection"""
@@ -99,6 +103,38 @@ class MongoSession:
             self.add(entity)
         logger.info("Tracking %s entities", len(entities))
 
+    def delete(self, entity: T) -> None:
+        """Mark an entity for deletion"""
+        if not is_dataclass(entity):
+            raise EntityNotDataclassError(type(entity))
+
+        entity_type = type(entity)
+
+        if entity_type not in self.collection_mapping:
+            raise CollectionMappingNotFoundError(entity_type)
+
+        if not hasattr(entity, "_id"):
+            raise EntityMissingIdError(entity_type)
+
+        # Can't delete entities that haven't been inserted yet
+        if entity._id is None:  # noqa: SLF001
+            raise InvalidEntityIdError(entity_type)
+
+        entity_id = str(entity._id)  # noqa: SLF001
+
+        # Initialize deletion tracking for this entity type
+        if entity_type not in self._pending_deletes:
+            self._pending_deletes[entity_type] = set()
+
+        # Mark for deletion
+        self._pending_deletes[entity_type].add(entity_id)
+
+        logger.debug(
+            "Marking %s:%s for deletion",
+            entity_type.__name__,
+            entity_id,
+        )
+
     async def flush(self) -> None:
         """Execute pending operations (inserts and updates) without committing transaction"""
         if not self._tracked_entities and not self._pending_inserts:
@@ -108,6 +144,7 @@ class MongoSession:
         try:
             await self._process_inserts()
             await self._process_updates()
+            await self._process_deletes()
 
             # Update snapshots after successful flush
             self._update_snapshots()
@@ -172,6 +209,45 @@ class MongoSession:
                 continue
 
             await self._update_entity_type(entity_type, entities_dict)
+
+    async def _process_deletes(self) -> None:
+        """Process all pending delete operations"""
+        for entity_type, entity_ids in self._pending_deletes.items():
+            if not entity_ids:
+                continue
+
+            collection_name = self.collection_mapping.get(entity_type)
+            if collection_name is None:
+                raise CollectionMappingNotFoundError(entity_type)
+
+            collection = self.database[collection_name]
+
+            logger.info(
+                "Deleting %s %s entities",
+                len(entity_ids),
+                entity_type.__name__,
+            )
+
+            for entity_id in entity_ids:
+                try:
+                    object_id = ObjectId(entity_id)
+                except InvalidId as e:
+                    raise InvalidEntityIdError(entity_id, entity_type) from e
+
+                result = await collection.delete_one(
+                    {"_id": object_id},
+                    session=self.session,
+                )
+
+                if result.deleted_count > 0:
+                    logger.debug(
+                        "Deleted %s:%s",
+                        entity_type.__name__,
+                        entity_id,
+                    )
+
+        # Clear pending deletes after successful deletion
+        self._pending_deletes.clear()
 
     async def _update_entity_type(
         self,
@@ -280,3 +356,4 @@ class MongoSession:
         self._tracked_entities.clear()
         self._original_snapshots.clear()
         self._pending_inserts.clear()
+        self._pending_deletes.clear()
