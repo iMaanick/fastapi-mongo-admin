@@ -19,10 +19,12 @@ from app.application.interactors.admin.get_users_by_ids import (
 from app.application.interactors.admin.update_user_admin import (
     UpdateUserAdminInteractor,
 )
+from app.application.interactors.developer.create_developer import CreateDeveloperInteractor
 from app.application.interactors.user.create_user import CreateUserInteractor
 from app.application.interactors.user.get_user import GetUserInteractor
 from app.application.interactors.user.update_user import UpdateUserInteractor
 from app.application.interactors.user.update_users import UpdateUsersInteractor
+from app.infrastructure.db.developer_repo import MongoDeveloperRepository
 from app.infrastructure.db.user_repo import MongoUserRepository
 
 
@@ -39,10 +41,12 @@ class ApplicationProvider(Provider):
         GetUsersAdminInteractor,
         GetUsersByIdsAdminInteractor,
         UpdateUserAdminInteractor,
+        CreateDeveloperInteractor,
         scope=Scope.REQUEST,
     )
 
     repos = provide_all(
         WithParents[MongoUserRepository],
+        WithParents[MongoDeveloperRepository],
         scope=Scope.REQUEST,
     )

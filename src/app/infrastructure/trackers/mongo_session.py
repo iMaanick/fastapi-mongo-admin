@@ -195,8 +195,7 @@ class MongoSession:
                 )
 
                 # Update entity with generated _id
-                entity._id = result.inserted_id  # noqa: SLF001
-
+                entity._id = str(result.inserted_id)  # noqa: SLF001
                 logger.debug(
                     "Inserted %s with _id: %s",
                     entity_type.__name__,
@@ -234,12 +233,12 @@ class MongoSession:
 
             for entity_id in entity_ids:
                 try:
-                    object_id = ObjectId(entity_id)
+                    ObjectId(entity_id)
                 except InvalidId as e:
                     raise InvalidEntityIdError(entity_id, entity_type) from e
 
                 result = await collection.delete_one(
-                    {"_id": object_id},
+                    {"_id": entity_id},
                     session=self.session,
                 )
 
@@ -267,7 +266,7 @@ class MongoSession:
 
         for entity_id, entity in entities_dict.items():
             try:
-                object_id = ObjectId(entity_id)
+                ObjectId(entity_id)
             except InvalidId as e:
                 raise InvalidEntityIdError(entity_id, entity_type) from e
 
@@ -298,7 +297,7 @@ class MongoSession:
 
             # Execute update with $set operator
             result = await collection.update_one(
-                {"_id": object_id},
+                {"_id": entity_id},
                 {"$set": update_fields},
                 session=self.session,
             )

@@ -640,7 +640,7 @@ async def test_flush_pending_inserts(
     await mongo_session.flush()
 
     # Assert
-    assert user._id == ObjectId("507f1f77bcf86cd799439011")
+    assert user._id == str(ObjectId("507f1f77bcf86cd799439011"))
     mock_collection.insert_one.assert_called_once()
     assert len(mongo_session._pending_inserts) == 0
 
@@ -700,7 +700,7 @@ async def test_flush_detects_changes_and_updates(
     call_args = mock_collection.update_one.call_args
 
     # Check filter
-    assert call_args[0][0] == {"_id": ObjectId("507f1f77bcf86cd799439011")}
+    assert call_args[0][0] == {"_id": str(ObjectId("507f1f77bcf86cd799439011"))}
 
     # Check update fields
     update_doc = call_args[0][1]["$set"]
@@ -1170,7 +1170,7 @@ async def test_flush_executes_pending_deletes(
 
     mock_collection.delete_one.assert_called_once()
     call_args = mock_collection.delete_one.call_args
-    assert call_args[0][0] == {"_id": ObjectId(user_id)}
+    assert call_args[0][0] == {"_id": str(ObjectId(user_id))}
     assert len(mongo_session._pending_deletes) == 0
 
 
@@ -1343,7 +1343,7 @@ async def test_scenario_delete_tracked_entity(
 
     # Verify delete happened
     delete_call = mock_collection.delete_one.call_args
-    assert delete_call[0][0] == {"_id": ObjectId(user_id)}
+    assert delete_call[0][0] == {"_id": str(ObjectId(user_id))}
 
 
 @pytest.mark.asyncio
@@ -1494,7 +1494,7 @@ async def test_scenario_create_user_and_insert(
     assert insert_doc["age"] == 28
     assert insert_doc["tags"] == ["python", "fastapi"]
     assert insert_doc["metadata"] == {"role": "developer", "level": "senior"}
-    assert user._id == generated_id
+    assert user._id == str(generated_id)
 
 
 @pytest.mark.asyncio
@@ -1530,7 +1530,7 @@ async def test_scenario_update_simple_fields(
     mock_collection.update_one.assert_called_once()
     filter_doc, update_doc = mock_collection.update_one.call_args[0][:2]
 
-    assert filter_doc == {"_id": ObjectId(user_id)}
+    assert filter_doc == {"_id": str(ObjectId(user_id))}
     assert "$set" in update_doc
 
     set_fields = update_doc["$set"]
