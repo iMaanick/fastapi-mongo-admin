@@ -1021,6 +1021,440 @@ def test_entity_id_converted_to_string(
     assert "507f1f77bcf86cd799439011" in mongo_session._tracked_entities[User]
 
 
+# ============= Tests: delete() =============
+
+
+def test_delete_entity_with_valid_id(
+    mongo_session,
+    valid_object_id,
+):
+    """Test delete marks entity with valid _id for deletion"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mongo_session.delete(user)
+
+    assert User in mongo_session._pending_deletes
+    assert user_id in mongo_session._pending_deletes[User]
+
+
+def test_delete_non_dataclass_raises_error(
+    mongo_session,
+):
+    """Test deleting non-dataclass raises error"""
+    obj = NotADataclass()
+
+    with pytest.raises(EntityNotDataclassError):
+        mongo_session.delete(obj)
+
+
+def test_delete_unmapped_entity_raises_error(
+    mongo_session,
+):
+    """Test deleting entity without collection mapping raises error"""
+
+    @dataclass
+    class UnmappedEntity:
+        _id: str | None = None
+        name: str = ""
+
+    entity = UnmappedEntity(_id="507f1f77bcf86cd799439011", name="test")
+
+    with pytest.raises(CollectionMappingNotFoundError):
+        mongo_session.delete(entity)
+
+
+def test_delete_entity_without_id_field_raises_error(
+    mongo_session,
+):
+    """Test deleting entity without _id field raises EntityMissingIdError"""
+
+    @dataclass
+    class EntityWithoutId:
+        name: str = ""
+
+    mongo_session.collection_mapping[EntityWithoutId] = "entities"
+    entity = EntityWithoutId(name="test")
+
+    with pytest.raises(EntityMissingIdError):
+        mongo_session.delete(entity)
+
+
+def test_delete_entity_with_none_id_raises_error(
+    mongo_session,
+):
+    """Test deleting entity with _id=None raises InvalidEntityIdError"""
+    user = User(_id=None, name="Alice")
+
+    with pytest.raises(InvalidEntityIdError):
+        mongo_session.delete(user)
+
+
+def test_delete_same_entity_twice(
+    mongo_session,
+    valid_object_id,
+):
+    """Test deleting same entity twice (idempotent)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.delete(user)
+    mongo_session.delete(user)  # Second time
+
+    # Should still be in pending deletes once
+    assert user_id in mongo_session._pending_deletes[User]
+    assert len(mongo_session._pending_deletes[User]) == 1
+
+
+def test_delete_multiple_entities(
+    mongo_session,
+    valid_object_id,
+):
+    """Test deleting multiple entities"""
+    user1_id = valid_object_id()
+    user2_id = valid_object_id()
+
+    user1 = User(_id=user1_id, name="Alice")
+    user2 = User(_id=user2_id, name="Bob")
+
+    mongo_session.delete(user1)
+    mongo_session.delete(user2)
+
+    assert len(mongo_session._pending_deletes[User]) == 2
+    assert user1_id in mongo_session._pending_deletes[User]
+    assert user2_id in mongo_session._pending_deletes[User]
+
+
+def test_delete_different_entity_types(
+    mongo_session,
+    valid_object_id,
+):
+    """Test deleting entities of different types"""
+    user_id = valid_object_id()
+    product_id = valid_object_id()
+
+    user = User(_id=user_id, name="Alice")
+    product = Product(_id=product_id, title="Book")
+
+    mongo_session.delete(user)
+    mongo_session.delete(product)
+
+    assert User in mongo_session._pending_deletes
+    assert Product in mongo_session._pending_deletes
+    assert user_id in mongo_session._pending_deletes[User]
+    assert product_id in mongo_session._pending_deletes[Product]
+
+
+# ============= Tests: flush() - deletes =============
+
+
+@pytest.mark.asyncio
+async def test_flush_executes_pending_deletes(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Test flush executes pending delete operations"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.deleted_count = 1
+    mock_collection.delete_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    mock_collection.delete_one.assert_called_once()
+    call_args = mock_collection.delete_one.call_args
+    assert call_args[0][0] == {"_id": ObjectId(user_id)}
+    assert len(mongo_session._pending_deletes) == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_deletes_multiple_entities(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Test flush handles multiple delete operations"""
+    user1_id = valid_object_id()
+    user2_id = valid_object_id()
+    user3_id = valid_object_id()
+
+    users = [
+        User(_id=user1_id, name="Alice"),
+        User(_id=user2_id, name="Bob"),
+        User(_id=user3_id, name="Charlie"),
+    ]
+
+    for user in users:
+        mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.deleted_count = 1
+    mock_collection.delete_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    assert mock_collection.delete_one.call_count == 3
+    assert len(mongo_session._pending_deletes) == 0
+
+
+@pytest.mark.asyncio
+async def test_flush_delete_with_invalid_object_id(
+    mongo_session,
+    mock_database,
+):
+    """Test flush with invalid ObjectId raises error"""
+    user = User(name="Alice")
+    user._id = "invalid_object_id"
+
+    # Manually add to pending deletes
+    mongo_session._pending_deletes[User] = {"invalid_object_id"}
+
+    mock_database.__getitem__.return_value = AsyncMock()
+
+    with pytest.raises(InvalidEntityIdError):
+        await mongo_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_flush_delete_not_found_document(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Test flush handles delete of non-existent document gracefully"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.deleted_count = 0  # Document not found
+    mock_collection.delete_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    # Should not raise error
+    await mongo_session.flush()
+
+    mock_collection.delete_one.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_flush_order_inserts_updates_deletes(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Test flush executes operations in correct order: insert -> update -> delete"""
+    # New entity (insert)
+    new_user = User(name="New User")
+
+    # Existing entity to update
+    update_user_id = valid_object_id()
+    update_user = User(_id=update_user_id, name="Update Me", age=25)
+
+    # Existing entity to delete
+    delete_user_id = valid_object_id()
+    delete_user = User(_id=delete_user_id, name="Delete Me")
+
+    # Add operations
+    mongo_session.add(new_user)
+    mongo_session.add(update_user)
+    update_user.age = 26  # Make change
+    mongo_session.delete(delete_user)
+
+    # Mock setup
+    mock_collection = AsyncMock()
+
+    insert_result = MagicMock()
+    insert_result.inserted_id = ObjectId()
+
+    update_result = MagicMock()
+    update_result.modified_count = 1
+
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+
+    mock_collection.insert_one.return_value = insert_result
+    mock_collection.update_one.return_value = update_result
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Verify call order
+    assert mock_collection.method_calls[0][0] == "insert_one"
+    assert mock_collection.method_calls[1][0] == "update_one"
+    assert mock_collection.method_calls[2][0] == "delete_one"
+
+
+# ============= Integration Tests: delete scenarios =============
+
+
+@pytest.mark.asyncio
+async def test_scenario_delete_tracked_entity(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Track entity, modify it, then delete (should update then delete)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    # Track and modify
+    mongo_session.add(user)
+    user.age = 26
+    user.name = "Alice Updated"
+
+    # Then delete
+    mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+
+    update_result = MagicMock()
+    update_result.modified_count = 1
+
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+
+    mock_collection.update_one.return_value = update_result
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Should execute both update and delete
+    mock_collection.update_one.assert_called_once()
+    mock_collection.delete_one.assert_called_once()
+
+    # Verify update happened with changes
+    update_call = mock_collection.update_one.call_args
+    assert update_call[0][1]["$set"]["age"] == 26
+    assert update_call[0][1]["$set"]["name"] == "Alice Updated"
+
+    # Verify delete happened
+    delete_call = mock_collection.delete_one.call_args
+    assert delete_call[0][0] == {"_id": ObjectId(user_id)}
+
+
+@pytest.mark.asyncio
+async def test_scenario_delete_without_tracking(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Delete entity without tracking (just delete, no update)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    # Delete without add/tracking
+    mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Should only delete, no update
+    mock_collection.update_one.assert_not_called()
+    mock_collection.delete_one.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_scenario_rollback_clears_pending_deletes(
+    mongo_session,
+    mock_session,
+    valid_object_id,
+):
+    """Scenario: Rollback should clear pending deletes"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.delete(user)
+    assert len(mongo_session._pending_deletes[User]) == 1
+
+    await mongo_session.rollback()
+
+    assert len(mongo_session._pending_deletes) == 0
+    mock_session.abort_transaction.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_scenario_commit_with_deletes(
+    mongo_session,
+    mock_database,
+    mock_session,
+    valid_object_id,
+):
+    """Scenario: Commit should flush deletes and commit transaction"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.delete(user)
+
+    mock_collection = AsyncMock()
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.commit()
+
+    mock_collection.delete_one.assert_called_once()
+    mock_session.commit_transaction.assert_called_once()
+    assert len(mongo_session._pending_deletes) == 0
+
+
+@pytest.mark.asyncio
+async def test_scenario_bulk_delete_mixed_types(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Delete multiple entities of different types"""
+    user1_id = valid_object_id()
+    user2_id = valid_object_id()
+    product1_id = valid_object_id()
+    product2_id = valid_object_id()
+
+    users = [
+        User(_id=user1_id, name="Alice"),
+        User(_id=user2_id, name="Bob"),
+    ]
+    products = [
+        Product(_id=product1_id, title="Book"),
+        Product(_id=product2_id, title="Pen"),
+    ]
+
+    for user in users:
+        mongo_session.delete(user)
+    for product in products:
+        mongo_session.delete(product)
+
+    mock_collection = AsyncMock()
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Should call delete_one 4 times (2 users + 2 products)
+    assert mock_collection.delete_one.call_count == 4
+
+
 # ============= Integration Tests: Real-world Scenarios =============
 
 

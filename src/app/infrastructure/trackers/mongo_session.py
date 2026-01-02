@@ -118,7 +118,7 @@ class MongoSession:
 
         # Can't delete entities that haven't been inserted yet
         if entity._id is None:  # noqa: SLF001
-            raise InvalidEntityIdError(entity_type)
+            raise InvalidEntityIdError(str(None), entity_type)
 
         entity_id = str(entity._id)  # noqa: SLF001
 
@@ -137,7 +137,11 @@ class MongoSession:
 
     async def flush(self) -> None:
         """Execute pending operations (inserts and updates) without committing transaction"""
-        if not self._tracked_entities and not self._pending_inserts:
+        if (
+            not self._tracked_entities
+            and not self._pending_inserts
+            and not self._pending_deletes
+        ):
             logger.info("No tracked entities to flush")
             return
 
