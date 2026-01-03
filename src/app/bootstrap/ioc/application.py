@@ -25,7 +25,12 @@ from app.application.interactors.developer.create_developer import (
 from app.application.interactors.developer.get_developer import (
     GetDeveloperInteractor,
 )
-from app.application.interactors.developer.get_developers import GetDevelopersInteractor
+from app.application.interactors.developer.get_developers import (
+    GetDevelopersInteractor,
+)
+from app.application.interactors.developer.update_developer import (
+    UpdateDeveloperInteractor,
+)
 from app.application.interactors.user.create_user import CreateUserInteractor
 from app.application.interactors.user.get_user import GetUserInteractor
 from app.application.interactors.user.update_user import UpdateUserInteractor
@@ -50,6 +55,7 @@ class ApplicationProvider(Provider):
         CreateDeveloperInteractor,
         GetDeveloperInteractor,
         GetDevelopersInteractor,
+        UpdateDeveloperInteractor,
         scope=Scope.REQUEST,
     )
 

@@ -233,12 +233,12 @@ class MongoSession:
 
             for entity_id in entity_ids:
                 try:
-                    ObjectId(entity_id)
+                    object_id = ObjectId(entity_id)
                 except InvalidId as e:
                     raise InvalidEntityIdError(entity_id, entity_type) from e
 
                 result = await collection.delete_one(
-                    {"_id": entity_id},
+                    {"_id": object_id},
                     session=self.session,
                 )
 
@@ -266,7 +266,7 @@ class MongoSession:
 
         for entity_id, entity in entities_dict.items():
             try:
-                ObjectId(entity_id)
+                object_id = ObjectId(entity_id)
             except InvalidId as e:
                 raise InvalidEntityIdError(entity_id, entity_type) from e
 
@@ -297,7 +297,7 @@ class MongoSession:
 
             # Execute update with $set operator
             result = await collection.update_one(
-                {"_id": entity_id},
+                {"_id": object_id},
                 {"$set": update_fields},
                 session=self.session,
             )

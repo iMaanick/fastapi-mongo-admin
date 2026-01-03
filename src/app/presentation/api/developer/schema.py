@@ -87,9 +87,9 @@ class AddressSchema(BaseModel):
                     "city": "San Francisco",
                     "country": "USA",
                     "coordinates": {"lat": 37.7749, "lon": -122.4194},
-                }
-            ]
-        }
+                },
+            ],
+        },
     )
 
     city: str
@@ -102,8 +102,8 @@ class SkillSchema(BaseModel):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "examples": [{"name": "Python", "level": "expert", "years": 5}]
-        }
+            "examples": [{"name": "Python", "level": "expert", "years": 5}],
+        },
     )
 
     name: str
@@ -138,14 +138,14 @@ class DeveloperSchema(BaseModel):
                             "name": "E-commerce API",
                             "tech": ["Python", "FastAPI", "MongoDB"],
                             "role": "Backend Lead",
-                        }
+                        },
                     ],
                     "metadata": {
                         "preferences": {"theme": "dark"},
                         "statistics": {"commits": 1523},
                     },
-                }
-            ]
+                },
+            ],
         },
     )
 
@@ -158,3 +158,35 @@ class DeveloperSchema(BaseModel):
     skills: list[SkillSchema]
     projects: list[dict[str, Any]]
     metadata: dict[str, Any]
+
+
+class UpdateDeveloperRequestSchema(BaseModel):
+    """Request schema for updating developer (all fields optional)"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "full_name": "Alice Johnson",
+                    "city": "New York",
+                    "languages": ["Python", "Go", "JavaScript", "Rust"],
+                    "tags": ["backend", "api", "microservices", "devops"],
+                    "metadata": {
+                        "preferences": {"theme": "light"},
+                        "statistics": {"commits": 2000},
+                    },
+                },
+            ],
+        },
+    )
+
+    username: str | None = Field(None, description="Unique username")
+    full_name: str | None = Field(None, description="Full name of developer")
+    city: str | None = Field(None, description="City name")
+    country: str | None = Field(None, description="Country name")
+    coordinates: dict[str, float] | None = Field(None, description="GPS coordinates")
+    languages: list[str] | None = Field(None, description="Programming languages")
+    tags: set[str] | None = Field(None, description="Developer tags")
+    skills: list[dict[str, Any]] | None = Field(None, description="List of skills")
+    projects: list[dict[str, Any]] | None = Field(None, description="List of projects")
+    metadata: dict[str, Any] | None = Field(None, description="Additional metadata")

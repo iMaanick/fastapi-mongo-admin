@@ -45,3 +45,6 @@ class Developer:
 
     # Nested dict
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def change_username(self, username: str) -> None:
+        self.username = username + "!"

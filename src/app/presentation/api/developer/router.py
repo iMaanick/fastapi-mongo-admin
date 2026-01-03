@@ -11,11 +11,18 @@ from app.application.interactors.developer.get_developer import (
     GetDeveloperInteractor,
     GetDeveloperRequest,
 )
-from app.application.interactors.developer.get_developers import GetDevelopersInteractor
+from app.application.interactors.developer.get_developers import (
+    GetDevelopersInteractor,
+)
+from app.application.interactors.developer.update_developer import (
+    UpdateDeveloperInteractor,
+    UpdateDeveloperRequest,
+)
 from app.domain.developer import Developer
 from app.presentation.api.developer.schema import (
     CreateDeveloperRequestSchema,
     DeveloperSchema,
+    UpdateDeveloperRequestSchema,
 )
 
 developer_router = APIRouter()
@@ -79,3 +86,36 @@ async def get_developers(
     Returns complete developer profile with all nested structures
     """
     return await interactor()
+
+
+@developer_router.patch(
+    "/{developer_id}",
+    status_code=status.HTTP_200_OK,
+)
+@inject
+async def update_developer(
+    developer_id: str,
+    request_schema: UpdateDeveloperRequestSchema,
+    interactor: FromDishka[UpdateDeveloperInteractor],
+) -> DeveloperSchema | None:
+    """
+    Update developer by ID
+
+    Updates only provided fields, leaving others unchanged.
+    Supports partial updates of nested structures.
+    """
+    request_data = UpdateDeveloperRequest(
+        developer_id=developer_id,
+        username=request_schema.username,
+        full_name=request_schema.full_name,
+        city=request_schema.city,
+        country=request_schema.country,
+        coordinates=request_schema.coordinates,
+        languages=request_schema.languages,
+        tags=request_schema.tags,
+        skills=request_schema.skills,
+        projects=request_schema.projects,
+        metadata=request_schema.metadata,
+    )
+
+    return await interactor(request_data)

@@ -136,7 +136,7 @@ class InfrastructureProvider(Provider):
                         P._id,  # noqa: SLF001
                         lambda x: str(x) if isinstance(x, ObjectId) else x,
                     ),
-                    ]
+                    ],
             ),
             session=session,
         )
