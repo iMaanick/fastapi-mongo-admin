@@ -7,7 +7,10 @@ from app.application.interactors.developer.create_developer import (
     CreateDeveloperInteractor,
     CreateDeveloperRequest,
 )
-from app.domain.developer import Developer
+from app.application.interactors.developer.get_developer import (
+    GetDeveloperInteractor,
+    GetDeveloperRequest,
+)
 from app.presentation.api.developer.schema import CreateDeveloperRequestSchema
 
 developer_router = APIRouter()
@@ -34,5 +37,24 @@ async def create_developer(
         projects=request_data.projects,
         metadata=request_data.metadata,
     )
+
+    return await interactor(request_data)
+
+
+@developer_router.get(
+    "/{developer_id}",
+    status_code=status.HTTP_200_OK,
+)
+@inject
+async def get_developer(
+    developer_id: str,
+    interactor: FromDishka[GetDeveloperInteractor],
+):
+    """
+    Get developer by ID
+
+    Returns complete developer profile with all nested structures
+    """
+    request_data = GetDeveloperRequest(developer_id=developer_id)
 
     return await interactor(request_data)

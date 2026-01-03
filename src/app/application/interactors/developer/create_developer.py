@@ -4,7 +4,7 @@ from pprint import pprint
 from typing import Any
 
 from app.application.developer_repo import DeveloperRepository
-from app.domain.developer import Address, Skill, Developer
+from app.domain.developer import Address, Developer, Skill
 from app.infrastructure.trackers.mongo_session import MongoSession
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class CreateDeveloperRequest:
     languages: list[str] = field(default_factory=list)
     tags: set[str] = field(default_factory=set)
     skills: list[dict[str, Any]] = field(
-        default_factory=list
+        default_factory=list,
     )  # [{"name": "Python", "level": "expert", "years": 5}]
     projects: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -70,7 +70,7 @@ class CreateDeveloperInteractor:
         await self.session.commit()
 
         logger.info(
-            "Developer created: %s with ID: %s", developer.username, developer._id
+            "Developer created: %s with ID: %s", developer.username, developer._id,
         )
         pprint(developer)
         return developer

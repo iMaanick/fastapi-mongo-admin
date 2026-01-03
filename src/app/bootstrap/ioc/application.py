@@ -19,7 +19,12 @@ from app.application.interactors.admin.get_users_by_ids import (
 from app.application.interactors.admin.update_user_admin import (
     UpdateUserAdminInteractor,
 )
-from app.application.interactors.developer.create_developer import CreateDeveloperInteractor
+from app.application.interactors.developer.create_developer import (
+    CreateDeveloperInteractor,
+)
+from app.application.interactors.developer.get_developer import (
+    GetDeveloperInteractor,
+)
 from app.application.interactors.user.create_user import CreateUserInteractor
 from app.application.interactors.user.get_user import GetUserInteractor
 from app.application.interactors.user.update_user import UpdateUserInteractor
@@ -42,6 +47,7 @@ class ApplicationProvider(Provider):
         GetUsersByIdsAdminInteractor,
         UpdateUserAdminInteractor,
         CreateDeveloperInteractor,
+        GetDeveloperInteractor,
         scope=Scope.REQUEST,
     )
 

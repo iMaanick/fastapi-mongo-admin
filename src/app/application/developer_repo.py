@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Protocol, Any
+from typing import Any, Protocol
 
 from app.domain.developer import Developer
 

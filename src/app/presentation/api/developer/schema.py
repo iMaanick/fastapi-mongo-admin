@@ -40,9 +40,9 @@ class CreateDeveloperRequestSchema(BaseModel):
                         "statistics": {"commits": 1523, "pull_requests": 234},
                         "badges": ["top_contributor", "code_reviewer"],
                     },
-                }
-            ]
-        }
+                },
+            ],
+        },
     )
 
     username: str = Field(..., description="Unique username")
@@ -50,18 +50,82 @@ class CreateDeveloperRequestSchema(BaseModel):
     city: str = Field(..., description="City name")
     country: str = Field(..., description="Country name")
     coordinates: dict[str, float] = Field(
-        default_factory=dict, description="GPS coordinates"
+        default_factory=dict,
+        description="GPS coordinates",
     )
     languages: list[str] = Field(
-        default_factory=list, description="Programming languages"
+        default_factory=list,
+        description="Programming languages",
     )
     tags: set[str] = Field(default_factory=set, description="Developer tags")
     skills: list[dict[str, Any]] = Field(
-        default_factory=list, description="List of skills with proficiency levels"
+        default_factory=list,
+        description="List of skills with proficiency levels",
     )
     projects: list[dict[str, Any]] = Field(
-        default_factory=list, description="List of projects"
+        default_factory=list,
+        description="List of projects",
     )
     metadata: dict[str, Any] = Field(
-        default_factory=dict, description="Additional metadata with nested structures"
+        default_factory=dict,
+        description="Additional metadata with nested structures",
     )
+
+
+class DeveloperResponseSchema(BaseModel):
+    """Response schema for developer"""
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "_id": "69581038f2db860793b48cb2",
+                    "username": "alice_dev",
+                    "full_name": "Alice Smith",
+                    "city": "San Francisco",
+                    "country": "USA",
+                    "coordinates": {"lat": 37.7749, "lon": -122.4194},
+                    "languages": ["Python", "Go", "JavaScript"],
+                    "tags": ["backend", "api", "microservices"],
+                    "skills": [
+                        {"name": "Python", "level": "expert", "years": 5},
+                        {"name": "FastAPI", "level": "advanced", "years": 3},
+                        {"name": "MongoDB", "level": "advanced", "years": 4},
+                    ],
+                    "projects": [
+                        {
+                            "name": "E-commerce API",
+                            "tech": ["Python", "FastAPI", "MongoDB"],
+                            "role": "Backend Lead",
+                        },
+                        {
+                            "name": "Microservices Platform",
+                            "tech": ["Go", "Docker", "Kubernetes"],
+                            "role": "Senior Developer",
+                        },
+                    ],
+                    "metadata": {
+                        "preferences": {
+                            "theme": "dark",
+                            "notifications": {"email": True, "push": False},
+                        },
+                        "statistics": {"commits": 1523, "pull_requests": 234},
+                        "badges": ["top_contributor", "code_reviewer"],
+                    },
+                },
+            ],
+        },
+    )
+
+    developer_id: str = Field(..., alias="_id", description="MongoDB ObjectId")
+    username: str = Field(..., description="Unique username")
+    full_name: str = Field(..., description="Full name of developer")
+    city: str = Field(..., description="City name")
+    country: str = Field(..., description="Country name")
+    coordinates: dict[str, float] = Field(..., description="GPS coordinates")
+    languages: list[str] = Field(..., description="Programming languages")
+    tags: list[str] = Field(..., description="Developer tags")
+    skills: list[dict[str, Any]] = Field(..., description="List of skills")
+    projects: list[dict[str, Any]] = Field(..., description="List of projects")
+    metadata: dict[str, Any] = Field(..., description="Additional metadata")

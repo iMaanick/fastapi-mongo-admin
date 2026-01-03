@@ -2,7 +2,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from adaptix import Retort
 from bson import ObjectId
 from motor.motor_asyncio import (
     AsyncIOMotorClientSession,
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 @dataclass(slots=True, frozen=True)
 class MongoDeveloperRepository(DeveloperRepository):
     database: AsyncIOMotorDatabase[dict[str, Any]]
-    retort: Retort
     session: AsyncIOMotorClientSession
     mongo_session: MongoSession
 
@@ -34,8 +32,10 @@ class MongoDeveloperRepository(DeveloperRepository):
         logger.info("Developer added")
 
     async def get_by_id(self, developer_id: str) -> Developer | None:
+        object_id = ObjectId(developer_id)
+
         developer_doc = await self.collection.find_one(
-            {"_id": developer_id},
+            {"_id": object_id},
             session=self.session,
         )
 
@@ -43,10 +43,9 @@ class MongoDeveloperRepository(DeveloperRepository):
             logger.info("Developer not found: %s", developer_id)
             return None
 
-        developer = self.retort.load(developer_doc, Developer)
+        developer = self.mongo_session.retort.load(developer_doc, Developer)
         self.mongo_session.add(developer)
         return developer
-
 
     async def get_all(
         self,
@@ -70,7 +69,7 @@ class MongoDeveloperRepository(DeveloperRepository):
             cursor = cursor.limit(limit)
 
         developer_docs = await cursor.to_list(length=None)
-        developers = self.retort.load(developer_docs, list[Developer])
+        developers = self.mongo_session.retort.load(developer_docs, list[Developer])
 
         logger.info("Loaded %s developers with filter: %s", len(developers), query)
         self.mongo_session.add_all(developers)
