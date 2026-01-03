@@ -22,6 +22,9 @@ from app.application.interactors.admin.update_user_admin import (
 from app.application.interactors.developer.create_developer import (
     CreateDeveloperInteractor,
 )
+from app.application.interactors.developer.delete_developer import (
+    DeleteDeveloperInteractor,
+)
 from app.application.interactors.developer.get_developer import (
     GetDeveloperInteractor,
 )
@@ -56,6 +59,7 @@ class ApplicationProvider(Provider):
         GetDeveloperInteractor,
         GetDevelopersInteractor,
         UpdateDeveloperInteractor,
+        DeleteDeveloperInteractor,
         scope=Scope.REQUEST,
     )
 

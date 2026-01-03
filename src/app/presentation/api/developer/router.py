@@ -7,6 +7,10 @@ from app.application.interactors.developer.create_developer import (
     CreateDeveloperInteractor,
     CreateDeveloperRequest,
 )
+from app.application.interactors.developer.delete_developer import (
+    DeleteDeveloperInteractor,
+    DeleteDeveloperRequest,
+)
 from app.application.interactors.developer.get_developer import (
     GetDeveloperInteractor,
     GetDeveloperRequest,
@@ -21,7 +25,6 @@ from app.application.interactors.developer.update_developer import (
 from app.domain.developer import Developer
 from app.presentation.api.developer.schema import (
     CreateDeveloperRequestSchema,
-    DeveloperSchema,
     UpdateDeveloperRequestSchema,
 )
 
@@ -36,8 +39,8 @@ developer_router = APIRouter()
 async def create_developer(
     request_data: CreateDeveloperRequestSchema,
     interactor: FromDishka[CreateDeveloperInteractor],
-):
-    request_data = CreateDeveloperRequest(
+) -> Developer:
+    data = CreateDeveloperRequest(
         username=request_data.username,
         full_name=request_data.full_name,
         city=request_data.city,
@@ -50,7 +53,7 @@ async def create_developer(
         metadata=request_data.metadata,
     )
 
-    return await interactor(request_data)
+    return await interactor(data)
 
 
 @developer_router.get(
@@ -61,7 +64,7 @@ async def create_developer(
 async def get_developer(
     developer_id: str,
     interactor: FromDishka[GetDeveloperInteractor],
-) -> DeveloperSchema | None:
+) -> Developer | None:
     """
     Get developer by ID
 
@@ -97,7 +100,7 @@ async def update_developer(
     developer_id: str,
     request_schema: UpdateDeveloperRequestSchema,
     interactor: FromDishka[UpdateDeveloperInteractor],
-) -> DeveloperSchema | None:
+) -> Developer | None:
     """
     Update developer by ID
 
@@ -119,3 +122,23 @@ async def update_developer(
     )
 
     return await interactor(request_data)
+
+
+@developer_router.delete(
+    "/{developer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@inject
+async def delete_developer(
+        developer_id: str,
+        interactor: FromDishka[DeleteDeveloperInteractor],
+) -> None:
+    """
+    Delete developer by ID
+
+    Permanently removes developer from the database.
+    Returns 404 if developer not found.
+    """
+    request_data = DeleteDeveloperRequest(developer_id=developer_id)
+
+    await interactor(request_data)
