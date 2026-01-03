@@ -11,7 +11,12 @@ from app.application.interactors.developer.get_developer import (
     GetDeveloperInteractor,
     GetDeveloperRequest,
 )
-from app.presentation.api.developer.schema import CreateDeveloperRequestSchema
+from app.application.interactors.developer.get_developers import GetDevelopersInteractor
+from app.domain.developer import Developer
+from app.presentation.api.developer.schema import (
+    CreateDeveloperRequestSchema,
+    DeveloperSchema,
+)
 
 developer_router = APIRouter()
 
@@ -49,7 +54,7 @@ async def create_developer(
 async def get_developer(
     developer_id: str,
     interactor: FromDishka[GetDeveloperInteractor],
-):
+) -> DeveloperSchema | None:
     """
     Get developer by ID
 
@@ -58,3 +63,19 @@ async def get_developer(
     request_data = GetDeveloperRequest(developer_id=developer_id)
 
     return await interactor(request_data)
+
+
+@developer_router.get(
+    "/",
+    status_code=status.HTTP_200_OK,
+)
+@inject
+async def get_developers(
+    interactor: FromDishka[GetDevelopersInteractor],
+) -> list[Developer]:
+    """
+    Get developers
+
+    Returns complete developer profile with all nested structures
+    """
+    return await interactor()
