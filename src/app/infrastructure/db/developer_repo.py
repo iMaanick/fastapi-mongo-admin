@@ -43,8 +43,7 @@ class MongoDeveloperRepository(DeveloperRepository):
             logger.info("Developer not found: %s", developer_id)
             return None
 
-        developer = self.mongo_session.retort.load(developer_doc, Developer)
-        self.mongo_session.add(developer)
+        developer = self.mongo_session.load(Developer, developer_doc)
         return developer
 
     async def get_all(
@@ -69,10 +68,9 @@ class MongoDeveloperRepository(DeveloperRepository):
             cursor = cursor.limit(limit)
 
         developer_docs = await cursor.to_list(length=None)
-        developers = self.mongo_session.retort.load(developer_docs, list[Developer])
+        developers = self.mongo_session.load_all(Developer, developer_docs)
 
         logger.info("Loaded %s developers with filter: %s", len(developers), query)
-        self.mongo_session.add_all(developers)
         return developers
 
     async def delete(self, developer_id: str) -> None:
