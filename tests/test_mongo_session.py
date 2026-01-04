@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from adaptix import Retort
+from adaptix import Retort, loader, P
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorDatabase
 
@@ -61,7 +61,15 @@ class NotADataclass:
 @pytest.fixture
 def retort():
     """Create Retort instance"""
-    return Retort()
+    return Retort(
+        recipe=[
+            # name_mapping(P[Any], map={"_private": "_private"}),
+            loader(
+                P._id,  # noqa: SLF001
+                lambda x: str(x) if isinstance(x, ObjectId) else x,
+            ),
+        ],
+    )
 
 
 @pytest.fixture
@@ -3769,6 +3777,717 @@ def test_scenario_identity_map_string_id_handling(
     # Get by ObjectId also works (converted to string internally)
     retrieved2 = mongo_session.get(User, str(object_id))
     assert retrieved2 is user1
+
+
+# ============= Tests: load() =============
+
+
+def test_load_entity_not_in_identity_map(
+    mongo_session,
+    retort,
+    valid_object_id,
+):
+    """Test load() loads entity and adds to identity map"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": ["python"],
+        "metadata": {"role": "admin"},
+    }
+
+    # Load entity
+    user = mongo_session.load(User, doc)
+
+    # Verify entity loaded correctly
+    assert user._id == user_id
+    assert user.name == "Alice"
+    assert user.email == "alice@test.com"
+    assert user.age == 25
+
+    # Verify entity is in identity map
+    assert mongo_session.get(User, user_id) is user
+
+
+def test_load_entity_already_in_identity_map(
+    mongo_session,
+    retort,
+    valid_object_id,
+):
+    """Test load() returns existing entity from identity map"""
+    user_id = valid_object_id()
+
+    # Add entity to identity map first
+    existing_user = User(_id=user_id, name="Alice", age=25)
+    mongo_session.add(existing_user)
+
+    # Modify existing entity
+    existing_user.age = 30
+
+    # Load same entity from different document
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Bob",  # Different data
+        "email": "bob@test.com",
+        "age": 20,  # Different data
+        "tags": [],
+        "metadata": {},
+    }
+
+    # Load should return existing entity (not create new one)
+    loaded_user = mongo_session.load(User, doc)
+
+    # Should be same instance
+    assert loaded_user is existing_user
+
+    # Should have data from existing entity, NOT from document
+    assert loaded_user.name == "Alice"
+    assert loaded_user.age == 30  # Modified value
+
+
+def test_load_entity_without_id_in_document_raises_error(
+    mongo_session,
+):
+    """Test load() raises error when document has no _id"""
+    doc = {
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    with pytest.raises(InvalidEntityIdError) as exc_info:
+        mongo_session.load(User, doc)
+
+    assert exc_info.value.entity_type == User
+    assert exc_info.value.entity_id == str(None)
+
+
+def test_load_unmapped_entity_type_raises_error(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load() raises error for unmapped entity type"""
+
+    @dataclass
+    class UnmappedEntity:
+        _id: str | None = None
+        name: str = ""
+
+    doc = {
+        "_id": ObjectId(valid_object_id()),
+        "name": "Test",
+    }
+
+    with pytest.raises(CollectionMappingNotFoundError):
+        mongo_session.load(UnmappedEntity, doc)
+
+
+def test_load_multiple_different_entities(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load() can load multiple different entities"""
+    user_id = valid_object_id()
+    product_id = valid_object_id()
+
+    user_doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    product_doc = {
+        "_id": ObjectId(product_id),
+        "title": "Book",
+        "price": 10.0,
+        "in_stock": True,
+    }
+
+    # Load both entities
+    user = mongo_session.load(User, user_doc)
+    product = mongo_session.load(Product, product_doc)
+
+    # Both should be in identity map
+    assert mongo_session.get(User, user_id) is user
+    assert mongo_session.get(Product, product_id) is product
+
+
+def test_load_converts_objectid_to_string(
+    mongo_session,
+):
+    """Test load() converts ObjectId to string for tracking"""
+    object_id = ObjectId("507f1f77bcf86cd799439011")
+    doc = {
+        "_id": object_id,
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    user = mongo_session.load(User, doc)
+
+    # Should be stored as string in identity map
+    assert "507f1f77bcf86cd799439011" in mongo_session._tracked_entities[User]
+    assert mongo_session.get(User, "507f1f77bcf86cd799439011") is user
+
+
+def test_load_entity_with_nested_structures(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load() handles entities with complex nested data"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": ["python", "fastapi", "mongodb"],
+        "metadata": {
+            "role": "admin",
+            "permissions": ["read", "write", "delete"],
+            "settings": {"theme": "dark", "language": "en"},
+        },
+    }
+
+    user = mongo_session.load(User, doc)
+
+    assert user.tags == ["python", "fastapi", "mongodb"]
+    assert user.metadata["role"] == "admin"
+    assert user.metadata["settings"]["theme"] == "dark"
+
+
+def test_load_same_entity_twice_returns_same_instance(
+    mongo_session,
+    valid_object_id,
+):
+    """Test loading same entity twice returns same instance"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    # Load twice
+    user1 = mongo_session.load(User, doc)
+    user2 = mongo_session.load(User, doc)
+
+    # Should be same instance
+    assert user1 is user2
+
+
+def test_load_after_modification_returns_modified_instance(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load() after modification returns modified instance"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    # First load
+    user1 = mongo_session.load(User, doc)
+
+    # Modify
+    user1.age = 30
+    user1.email = "alice.new@test.com"
+
+    # Load again with different data
+    doc2 = {
+        "_id": ObjectId(user_id),
+        "name": "Bob",
+        "email": "bob@test.com",
+        "age": 20,
+        "tags": [],
+        "metadata": {},
+    }
+
+    user2 = mongo_session.load(User, doc2)
+
+    # Should return same instance with modifications
+    assert user2 is user1
+    assert user2.age == 30  # Modified value, not from doc2
+    assert user2.email == "alice.new@test.com"  # Modified value
+
+
+# ============= Tests: load_all() =============
+
+
+def test_load_all_empty_list(
+    mongo_session,
+):
+    """Test load_all() with empty list"""
+    result = mongo_session.load_all(User, [])
+
+    assert result == []
+    assert len(mongo_session._tracked_entities) == 0
+
+
+def test_load_all_single_entity(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() with single entity"""
+    user_id = valid_object_id()
+    docs = [
+        {
+            "_id": ObjectId(user_id),
+            "name": "Alice",
+            "email": "alice@test.com",
+            "age": 25,
+            "tags": [],
+            "metadata": {},
+        }
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    assert len(users) == 1
+    assert users[0]._id == user_id
+    assert users[0].name == "Alice"
+
+
+def test_load_all_multiple_entities(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() with multiple entities"""
+    user_ids = [valid_object_id() for _ in range(3)]
+    docs = [
+        {
+            "_id": ObjectId(user_id),
+            "name": f"User{i}",
+            "email": f"user{i}@test.com",
+            "age": 20 + i,
+            "tags": [],
+            "metadata": {},
+        }
+        for i, user_id in enumerate(user_ids)
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    assert len(users) == 3
+    assert users[0].name == "User0"
+    assert users[1].name == "User1"
+    assert users[2].name == "User2"
+
+    # All should be in identity map
+    for i, user_id in enumerate(user_ids):
+        assert mongo_session.get(User, user_id) is users[i]
+
+
+def test_load_all_some_entities_in_identity_map(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() returns mix of new and existing entities"""
+    user_ids = [valid_object_id() for _ in range(3)]
+
+    # Pre-add first and third entity to identity map
+    existing_user1 = User(_id=user_ids[0], name="Existing1", age=100)
+    existing_user3 = User(_id=user_ids[2], name="Existing3", age=300)
+    mongo_session.add(existing_user1)
+    mongo_session.add(existing_user3)
+
+    # Load all three (with different data in documents)
+    docs = [
+        {
+            "_id": ObjectId(user_ids[0]),
+            "name": "FromDB1",
+            "email": "user1@test.com",
+            "age": 25,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            "_id": ObjectId(user_ids[1]),
+            "name": "FromDB2",
+            "email": "user2@test.com",
+            "age": 26,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            "_id": ObjectId(user_ids[2]),
+            "name": "FromDB3",
+            "email": "user3@test.com",
+            "age": 27,
+            "tags": [],
+            "metadata": {},
+        },
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    assert len(users) == 3
+
+    # First and third should be existing instances
+    assert users[0] is existing_user1
+    assert users[0].name == "Existing1"  # From identity map, not document
+    assert users[0].age == 100
+
+    assert users[2] is existing_user3
+    assert users[2].name == "Existing3"  # From identity map, not document
+    assert users[2].age == 300
+
+    # Second should be newly loaded
+    assert users[1].name == "FromDB2"  # From document
+    assert users[1].age == 26
+
+
+def test_load_all_all_entities_in_identity_map(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() when all entities already in identity map"""
+    user_ids = [valid_object_id() for _ in range(3)]
+
+    # Pre-add all entities
+    existing_users = [
+        User(_id=user_id, name=f"Existing{i}", age=100 + i)
+        for i, user_id in enumerate(user_ids)
+    ]
+    for user in existing_users:
+        mongo_session.add(user)
+
+    # Load with different data
+    docs = [
+        {
+            "_id": ObjectId(user_id),
+            "name": f"FromDB{i}",
+            "email": f"user{i}@test.com",
+            "age": 20 + i,
+            "tags": [],
+            "metadata": {},
+        }
+        for i, user_id in enumerate(user_ids)
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    # All should be existing instances
+    for i in range(3):
+        assert users[i] is existing_users[i]
+        assert users[i].name == f"Existing{i}"  # From identity map
+
+
+def test_load_all_preserves_order(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() preserves document order"""
+    user_ids = [valid_object_id() for _ in range(5)]
+    docs = [
+        {
+            "_id": ObjectId(user_id),
+            "name": f"User{i}",
+            "email": f"user{i}@test.com",
+            "age": 20 + i,
+            "tags": [],
+            "metadata": {},
+        }
+        for i, user_id in enumerate(user_ids)
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    # Order should match document order
+    for i in range(5):
+        assert users[i]._id == user_ids[i]
+        assert users[i].name == f"User{i}"
+
+
+def test_load_all_unmapped_entity_type_raises_error(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() raises error for unmapped entity type"""
+
+    @dataclass
+    class UnmappedEntity:
+        _id: str | None = None
+        name: str = ""
+
+    docs = [
+        {
+            "_id": ObjectId(valid_object_id()),
+            "name": "Test",
+        }
+    ]
+
+    with pytest.raises(CollectionMappingNotFoundError):
+        mongo_session.load_all(UnmappedEntity, docs)
+
+
+def test_load_all_with_invalid_document_raises_error(
+    mongo_session,
+):
+    """Test load_all() raises error if document has no _id"""
+    docs = [
+        {
+            "name": "User1",
+            "email": "user1@test.com",
+            "age": 25,
+            "tags": [],
+            "metadata": {},
+        }
+    ]
+
+    with pytest.raises(InvalidEntityIdError):
+        mongo_session.load_all(User, docs)
+
+
+def test_load_all_stops_on_first_error(
+    mongo_session,
+    valid_object_id,
+):
+    """Test load_all() stops processing on first error"""
+    docs = [
+        {
+            "_id": ObjectId(valid_object_id()),
+            "name": "User1",
+            "email": "user1@test.com",
+            "age": 25,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            # Missing _id
+            "name": "User2",
+            "email": "user2@test.com",
+            "age": 26,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            "_id": ObjectId(valid_object_id()),
+            "name": "User3",
+            "email": "user3@test.com",
+            "age": 27,
+            "tags": [],
+            "metadata": {},
+        },
+    ]
+
+    with pytest.raises(InvalidEntityIdError):
+        mongo_session.load_all(User, docs)
+
+    # First entity should be loaded
+    assert len(mongo_session._tracked_entities.get(User, {})) == 1
+
+
+# ============= Integration Tests: load() and load_all() scenarios =============
+
+
+@pytest.mark.asyncio
+async def test_scenario_load_modify_flush(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Load entity, modify, flush changes"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    # Load
+    user = mongo_session.load(User, doc)
+
+    # Modify
+    user.age = 30
+    user.email = "alice.new@test.com"
+
+    # Flush
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.modified_count = 1
+    mock_collection.update_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Verify update was called
+    mock_collection.update_one.assert_called_once()
+    call_args = mock_collection.update_one.call_args
+    update_doc = call_args[0][1]["$set"]
+
+    assert update_doc["age"] == 30
+    assert update_doc["email"] == "alice.new@test.com"
+
+
+@pytest.mark.asyncio
+async def test_scenario_load_all_mixed_operations(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Load multiple entities, some exist, some new, modify and flush"""
+    user_ids = [valid_object_id() for _ in range(3)]
+
+    # Pre-existing entity (modified)
+    existing = User(_id=user_ids[0], name="Existing", age=100)
+    mongo_session.add(existing)
+    existing.age = 150  # Modify
+
+    # Load all
+    docs = [
+        {
+            "_id": ObjectId(user_ids[0]),
+            "name": "FromDB1",
+            "email": "user1@test.com",
+            "age": 25,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            "_id": ObjectId(user_ids[1]),
+            "name": "FromDB2",
+            "email": "user2@test.com",
+            "age": 26,
+            "tags": [],
+            "metadata": {},
+        },
+        {
+            "_id": ObjectId(user_ids[2]),
+            "name": "FromDB3",
+            "email": "user3@test.com",
+            "age": 27,
+            "tags": [],
+            "metadata": {},
+        },
+    ]
+
+    users = mongo_session.load_all(User, docs)
+
+    # First is existing
+    assert users[0] is existing
+    assert users[0].age == 150
+
+    # Modify new entities
+    users[1].age = 50
+    users[2].age = 60
+
+    # Flush
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.modified_count = 1
+    mock_collection.update_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # Should have 3 update calls
+    assert mock_collection.update_one.call_count == 3
+
+
+def test_scenario_load_get_returns_same_instance(
+    mongo_session,
+    valid_object_id,
+):
+    """Scenario: load() and get() return same instance"""
+    user_id = valid_object_id()
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+
+    # Load
+    loaded = mongo_session.load(User, doc)
+
+    # Get
+    retrieved = mongo_session.get(User, user_id)
+
+    # Should be same instance
+    assert loaded is retrieved
+
+
+@pytest.mark.asyncio
+async def test_scenario_repository_pattern_with_identity_map(
+    mongo_session,
+    valid_object_id,
+):
+    """Scenario: Simulate repository pattern with identity map"""
+    user_id = valid_object_id()
+
+    # Repository.find_by_id() - first call
+    doc = {
+        "_id": ObjectId(user_id),
+        "name": "Alice",
+        "email": "alice@test.com",
+        "age": 25,
+        "tags": [],
+        "metadata": {},
+    }
+    user1 = mongo_session.load(User, doc)
+
+    # Service layer modifies
+    user1.age = 30
+
+    # Repository.find_by_id() - second call (different part of code)
+    user2 = mongo_session.load(User, doc)
+
+    # Should see modifications
+    assert user2 is user1
+    assert user2.age == 30  # See the modification
+
+
+def test_scenario_bulk_load_performance(
+    mongo_session,
+    valid_object_id,
+):
+    """Scenario: Bulk loading many entities"""
+    # Create 100 documents
+    user_ids = [valid_object_id() for _ in range(100)]
+    docs = [
+        {
+            "_id": ObjectId(user_id),
+            "name": f"User{i}",
+            "email": f"user{i}@test.com",
+            "age": 20 + (i % 50),
+            "tags": [],
+            "metadata": {},
+        }
+        for i, user_id in enumerate(user_ids)
+    ]
+
+    # Load all
+    users = mongo_session.load_all(User, docs)
+
+    assert len(users) == 100
+
+    # All should be in identity map
+    for user_id, user in zip(user_ids, users):
+        assert mongo_session.get(User, user_id) is user
 
 
 if __name__ == "__main__":

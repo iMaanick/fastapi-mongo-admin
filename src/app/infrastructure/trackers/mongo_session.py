@@ -375,3 +375,67 @@ class MongoSession:
         if entity_type in self._tracked_entities:
             return self._tracked_entities[entity_type].get(entity_id)
         return None
+
+    def load(self, entity_type: type[T], doc: dict[str, Any]) -> T:
+        """
+        Load entity from MongoDB document.
+        If entity already exists in identity map, returns tracked instance.
+        Otherwise loads new entity and adds to identity map.
+        """
+        if entity_type not in self.collection_mapping:
+            raise CollectionMappingNotFoundError(entity_type)
+
+        # Extract _id from document first
+        doc_id = doc.get("_id")
+        if doc_id is None:
+            raise InvalidEntityIdError(str(None), entity_type)
+
+        entity_id = str(doc_id)
+
+        # Check if already in identity map BEFORE loading
+        if entity_type in self._tracked_entities:
+            existing = self._tracked_entities[entity_type].get(entity_id)
+            if existing is not None:
+                logger.debug(
+                    "Returning existing %s:%s from identity map",
+                    entity_type.__name__,
+                    entity_id,
+                )
+                return existing
+
+        # Not in identity map - load from document
+        entity = self.retort.load(doc, entity_type)
+
+        # Add to identity map and return
+        self.add(entity)
+        logger.debug(
+            "Loaded and tracked new %s:%s",
+            entity_type.__name__,
+            entity_id,
+        )
+        return entity
+
+    def load_all(self, entity_type: type[T], docs: list[dict[str, Any]]) -> list[T]:
+        """
+        Load multiple entities from MongoDB documents.
+        For each entity, if it already exists in identity map, uses tracked instance.
+        Otherwise loads new entity and adds to identity map.
+
+        Returns list where some entities may be from identity map (if already tracked).
+        """
+        if entity_type not in self.collection_mapping:
+            raise CollectionMappingNotFoundError(entity_type)
+
+        result: list[T] = []
+
+        for doc in docs:
+            entity = self.load(entity_type, doc)
+            result.append(entity)
+
+        logger.info(
+            "Loaded %s %s entities (some may be from identity map)",
+            len(result),
+            entity_type.__name__,
+        )
+
+        return result
