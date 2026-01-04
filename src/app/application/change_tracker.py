@@ -84,6 +84,21 @@ class EntityMissingIdError(ChangeTrackerError):
         return f"Cannot track {self.entity_type.__name__} without _id"
 
 
+@dataclass(eq=False)
+class InvalidRequestError(ChangeTrackerError):
+    """Исключение когда у entity отсутствует _id"""
+
+    entity_type: type
+    entity_id: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"Can't attach {self.entity_type.__name__} with id={self.entity_id}: "
+            f"another instance with the same id is already tracked"
+        )
+
+
 T = TypeVar("T")
 
 

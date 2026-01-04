@@ -14,6 +14,7 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
+    InvalidRequestError,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,14 @@ class MongoSession:
             self._original_snapshots[entity_type] = {}
 
         entity_id = str(entity._id)  # noqa: SLF001
+
+        if entity_id in self._tracked_entities[entity_type]:
+            existing = self._tracked_entities[entity_type][entity_id]
+            if existing is not entity:
+                raise InvalidRequestError(
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                )
 
         # Store current entity reference
         self._tracked_entities[entity_type][entity_id] = entity
@@ -360,3 +369,9 @@ class MongoSession:
         self._original_snapshots.clear()
         self._pending_inserts.clear()
         self._pending_deletes.clear()
+
+    def get(self, entity_type: type[T], entity_id: str) -> T | None:
+        """Get entity from identity map by type and ID"""
+        if entity_type in self._tracked_entities:
+            return self._tracked_entities[entity_type].get(entity_id)
+        return None
