@@ -15,9 +15,10 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
-    InvalidRequestError,
+    InvalidRequestError, OriginalSnapshotNotFoundError,
 )
 from app.infrastructure.trackers.mongo_session import MongoSession
+
 
 # ============= Test Models =============
 
@@ -4488,6 +4489,27 @@ def test_scenario_bulk_load_performance(
     # All should be in identity map
     for user_id, user in zip(user_ids, users):
         assert mongo_session.get(User, user_id) is user
+
+
+@pytest.mark.asyncio
+async def test_flush_raises_original_snapshot_not_found(mongo_session, valid_object_id):
+    """Test flush raises OriginalSnapshotNotFoundError при отсутствии snapshot"""
+    mongo_session.collection_mapping[User] = "users"
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mongo_session._tracked_entities[User] = {user_id: user}
+    mongo_session._original_snapshots[User] = {}
+
+
+    with pytest.raises(OriginalSnapshotNotFoundError) as exc_info:
+        await mongo_session.flush()
+
+    error = exc_info.value
+    assert error.entity_type == User
+    assert error.entity_id == user_id
+    assert User.__name__ in error.message
+    assert user_id in error.message
 
 
 if __name__ == "__main__":

@@ -99,6 +99,21 @@ class InvalidRequestError(ChangeTrackerError):
         )
 
 
+@dataclass(eq=False)
+class OriginalSnapshotNotFoundError(ChangeTrackerError):
+    """Исключение, когда не найден оригинальный снапшот сущности"""
+
+    entity_type: type
+    entity_id: str
+
+    @property
+    def message(self) -> str:
+        return (
+            f"No original snapshot found for "
+            f"{self.entity_type.__name__} with ID '{self.entity_id}'"
+        )
+
+
 T = TypeVar("T")
 
 

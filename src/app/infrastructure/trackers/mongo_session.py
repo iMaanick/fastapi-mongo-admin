@@ -14,7 +14,7 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
-    InvalidRequestError,
+    InvalidRequestError, OriginalSnapshotNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -291,7 +291,10 @@ class MongoSession:
                     entity_type.__name__,
                     entity_id,
                 )
-                continue
+                raise OriginalSnapshotNotFoundError(
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                )
 
             # Compare top-level keys only
             update_fields = self._get_changed_fields(original_dump, current_dump)
