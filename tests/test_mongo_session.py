@@ -15,6 +15,7 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
+    InvalidRequestError,
 )
 from app.infrastructure.trackers.mongo_session import MongoSession
 
@@ -3252,6 +3253,522 @@ async def test_breaking_massive_concurrent_updates(
     ):
         snapshot = mongo_session._original_snapshots[User][user._id]
         assert snapshot["age"] == 30 + i
+
+
+# ============= Tests: Identity Map - get() =============
+
+
+def test_get_existing_entity(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() returns existing entity from identity map"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mongo_session.add(user)
+
+    # Get from identity map
+    retrieved = mongo_session.get(User, user_id)
+
+    assert retrieved is not None
+    assert retrieved is user  # Same object reference
+    assert retrieved.name == "Alice"
+    assert retrieved.age == 25
+
+
+def test_get_non_existing_entity(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() returns None for non-existing entity"""
+    user_id = valid_object_id()
+
+    retrieved = mongo_session.get(User, user_id)
+
+    assert retrieved is None
+
+
+def test_get_non_existing_entity_type(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() returns None for entity type not in map"""
+    user_id = valid_object_id()
+
+    # User type not in tracked_entities yet
+    retrieved = mongo_session.get(User, user_id)
+
+    assert retrieved is None
+
+
+def test_get_returns_same_instance_always(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() always returns same instance (Identity Map guarantee)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mongo_session.add(user)
+
+    # Multiple get calls
+    retrieved1 = mongo_session.get(User, user_id)
+    retrieved2 = mongo_session.get(User, user_id)
+    retrieved3 = mongo_session.get(User, user_id)
+
+    # All should be the same object
+    assert retrieved1 is user
+    assert retrieved2 is user
+    assert retrieved3 is user
+    assert retrieved1 is retrieved2 is retrieved3
+
+
+def test_get_after_modification(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() returns entity with current modifications"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mongo_session.add(user)
+
+    # Modify entity
+    user.age = 30
+    user.name = "Alice Updated"
+
+    # Get should return modified entity
+    retrieved = mongo_session.get(User, user_id)
+
+    assert retrieved is user
+    assert retrieved.age == 30
+    assert retrieved.name == "Alice Updated"
+
+
+def test_get_multiple_entity_types(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() with different entity types"""
+    user_id = valid_object_id()
+    product_id = valid_object_id()
+
+    user = User(_id=user_id, name="Alice")
+    product = Product(_id=product_id, title="Book")
+
+    mongo_session.add(user)
+    mongo_session.add(product)
+
+    # Get different types
+    retrieved_user = mongo_session.get(User, user_id)
+    retrieved_product = mongo_session.get(Product, product_id)
+
+    assert retrieved_user is user
+    assert retrieved_product is product
+
+
+def test_get_wrong_entity_type(
+    mongo_session,
+    valid_object_id,
+):
+    """Test get() with wrong entity type returns None"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.add(user)
+
+    # Try to get as Product (wrong type)
+    retrieved = mongo_session.get(Product, user_id)
+
+    assert retrieved is None
+
+
+@pytest.mark.asyncio
+async def test_get_after_commit_returns_none(
+    mongo_session,
+    valid_object_id,
+    mock_session,
+):
+    """Test get() returns None after commit (identity map cleared)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.add(user)
+
+    # Before commit - should exist
+    assert mongo_session.get(User, user_id) is user
+
+    # Commit clears identity map
+    await mongo_session.commit()
+
+    # After commit - should return None
+    retrieved = mongo_session.get(User, user_id)
+    assert retrieved is None
+
+
+@pytest.mark.asyncio
+async def test_get_after_rollback_returns_none(
+    mongo_session,
+    valid_object_id,
+    mock_session,
+):
+    """Test get() returns None after rollback (identity map cleared)"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.add(user)
+
+    # Before rollback - should exist
+    assert mongo_session.get(User, user_id) is user
+
+    # Rollback clears identity map
+    await mongo_session.rollback()
+
+    # After rollback - should return None
+    retrieved = mongo_session.get(User, user_id)
+    assert retrieved is None
+
+
+def test_get_pending_insert_returns_none(
+    mongo_session,
+):
+    """Test get() returns None for entities pending insert (no _id yet)"""
+    user = User(name="Alice")  # No _id
+
+    mongo_session.add(user)
+
+    # Entity is in pending_inserts, not tracked_entities
+    # get() should return None (can't query by None id)
+    retrieved = mongo_session.get(User, "any_id")
+
+    assert retrieved is None
+
+
+@pytest.mark.asyncio
+async def test_get_after_flush_insert_entity_has_id(
+    mongo_session,
+    mock_database,
+):
+    """Test entity gets _id assigned after flush insert"""
+    user = User(name="Alice")  # No _id initially
+
+    mock_collection = AsyncMock()
+    generated_id = ObjectId()
+    mock_result = MagicMock()
+    mock_result.inserted_id = generated_id
+    mock_collection.insert_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    mongo_session.add(user)
+
+    # Before flush - no _id
+    assert user._id is None
+
+    # Flush assigns _id
+    await mongo_session.flush()
+
+    # After flush - _id is assigned
+    assert user._id == str(generated_id)
+
+    # To track it in identity map, need to add after _id is assigned
+    mongo_session.add(user)
+
+    # Now available in identity map
+    retrieved = mongo_session.get(User, str(generated_id))
+    assert retrieved is user
+
+
+# ============= Tests: Identity Map - add() with duplicate check =============
+
+
+def test_add_same_entity_twice_same_instance(
+    mongo_session,
+    valid_object_id,
+):
+    """Test adding same entity instance twice is allowed"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.add(user)
+    mongo_session.add(user)  # Same instance again
+
+    # Should work fine (idempotent)
+    assert mongo_session.get(User, user_id) is user
+
+
+def test_add_different_instance_same_id_raises_error(
+    mongo_session,
+    valid_object_id,
+):
+    """Test adding different instance with same ID raises InvalidRequestError"""
+    user_id = valid_object_id()
+
+    user1 = User(_id=user_id, name="Alice", age=25)
+    user2 = User(_id=user_id, name="Bob", age=30)  # Different instance, same ID
+
+    mongo_session.add(user1)
+
+    # Should raise InvalidRequestError
+    with pytest.raises(InvalidRequestError) as exc_info:
+        mongo_session.add(user2)
+
+    # Check exception attributes instead of string representation
+    assert exc_info.value.entity_id == user_id
+    assert exc_info.value.entity_type == User
+
+    # First entity should still be in map
+    assert mongo_session.get(User, user_id) is user1
+
+
+def test_add_different_instance_same_id_multiple_types(
+    mongo_session,
+    valid_object_id,
+):
+    """Test same ID can exist for different entity types"""
+    same_id = valid_object_id()
+
+    user = User(_id=same_id, name="Alice")
+    product = Product(_id=same_id, title="Book")
+
+    # Should work - different types can have same ID
+    mongo_session.add(user)
+    mongo_session.add(product)
+
+    assert mongo_session.get(User, same_id) is user
+    assert mongo_session.get(Product, same_id) is product
+
+
+def test_add_after_getting_none_works(
+    mongo_session,
+    valid_object_id,
+):
+    """Test adding entity after get() returned None"""
+    user_id = valid_object_id()
+
+    # Get returns None (not tracked)
+    assert mongo_session.get(User, user_id) is None
+
+    # Add entity
+    user = User(_id=user_id, name="Alice")
+    mongo_session.add(user)
+
+    # Now get returns entity
+    assert mongo_session.get(User, user_id) is user
+
+
+@pytest.mark.asyncio
+async def test_add_modify_flush_add_again_works(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Test adding same instance again after flush works"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice", age=25)
+
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.modified_count = 1
+    mock_collection.update_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    mongo_session.add(user)
+    user.age = 26
+    await mongo_session.flush()
+
+    # Add same instance again after flush
+    mongo_session.add(user)
+
+    # Should work fine
+    assert mongo_session.get(User, user_id) is user
+
+
+def test_add_different_instance_after_clear_works(
+    mongo_session,
+    valid_object_id,
+):
+    """Test adding different instance after identity map cleared"""
+    user_id = valid_object_id()
+
+    user1 = User(_id=user_id, name="Alice")
+    mongo_session.add(user1)
+
+    # Manually clear (simulating commit/rollback)
+    mongo_session._tracked_entities.clear()
+    mongo_session._original_snapshots.clear()
+
+    # Now can add different instance with same ID
+    user2 = User(_id=user_id, name="Bob")
+    mongo_session.add(user2)
+
+    # Should work
+    assert mongo_session.get(User, user_id) is user2
+
+
+# ============= Integration Tests: Identity Map Scenarios =============
+
+
+@pytest.mark.asyncio
+async def test_scenario_typical_crud_with_identity_map(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Typical CRUD workflow with identity map"""
+    user_id = valid_object_id()
+
+    # 1. "Load" entity (simulate repository loading)
+    user = User(_id=user_id, name="Alice", age=25)
+    mongo_session.add(user)
+
+    # 2. Get from identity map (simulating multiple service calls)
+    retrieved1 = mongo_session.get(User, user_id)
+    assert retrieved1 is user
+
+    # 3. Modify
+    retrieved1.age = 26
+
+    # 4. Get again - should see modifications
+    retrieved2 = mongo_session.get(User, user_id)
+    assert retrieved2.age == 26
+    assert retrieved2 is user
+
+    # 5. Flush changes
+    mock_collection = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.modified_count = 1
+    mock_collection.update_one.return_value = mock_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # 6. Still in identity map
+    retrieved3 = mongo_session.get(User, user_id)
+    assert retrieved3 is user
+
+
+@pytest.mark.asyncio
+async def test_scenario_prevent_duplicate_entity_bug(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Identity map prevents bug with duplicate entity instances"""
+    user_id = valid_object_id()
+
+    # Simulating bug: two parts of code load same entity
+    user_from_repo1 = User(_id=user_id, name="Alice", age=25)
+    user_from_repo2 = User(_id=user_id, name="Alice", age=25)
+
+    # First load works
+    mongo_session.add(user_from_repo1)
+
+    # Second load should fail (different instance, same ID)
+    with pytest.raises(InvalidRequestError):
+        mongo_session.add(user_from_repo2)
+
+    # Only first instance is tracked
+    assert mongo_session.get(User, user_id) is user_from_repo1
+
+
+@pytest.mark.asyncio
+async def test_scenario_identity_map_with_delete(
+    mongo_session,
+    mock_database,
+    valid_object_id,
+):
+    """Scenario: Identity map behavior with entity deletion"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    mongo_session.add(user)
+    assert mongo_session.get(User, user_id) is user
+
+    # Delete entity
+    mongo_session.delete(user)
+
+    # Entity still in identity map until flush
+    assert mongo_session.get(User, user_id) is user
+
+    # Flush deletes
+    mock_collection = AsyncMock()
+    delete_result = MagicMock()
+    delete_result.deleted_count = 1
+    mock_collection.delete_one.return_value = delete_result
+    mock_database.__getitem__.return_value = mock_collection
+
+    await mongo_session.flush()
+
+    # After flush, still in identity map (until commit)
+    assert mongo_session.get(User, user_id) is user
+
+
+@pytest.mark.asyncio
+async def test_scenario_identity_map_session_lifecycle(
+    mongo_session,
+    mock_database,
+    mock_session,
+    valid_object_id,
+):
+    """Scenario: Identity map lifecycle through session operations"""
+    user_id = valid_object_id()
+    user = User(_id=user_id, name="Alice")
+
+    # 1. Add to identity map
+    mongo_session.add(user)
+    assert mongo_session.get(User, user_id) is user
+
+    # 2. Commit clears identity map
+    await mongo_session.commit()
+    assert mongo_session.get(User, user_id) is None
+
+    # 3. Add again (new session scope)
+    user2 = User(_id=user_id, name="Bob")  # Different instance now OK
+    mongo_session.add(user2)
+    assert mongo_session.get(User, user_id) is user2
+
+    # 4. Rollback also clears
+    await mongo_session.rollback()
+    assert mongo_session.get(User, user_id) is None
+
+
+def test_scenario_identity_map_performance_benefit(
+    mongo_session,
+    valid_object_id,
+):
+    """Scenario: Identity map provides O(1) lookups"""
+    # Add 100 entities
+    users = []
+    for i in range(100):
+        user_id = valid_object_id()
+        user = User(_id=user_id, name=f"User{i}")
+        mongo_session.add(user)
+        users.append((user_id, user))
+
+    # Verify all can be retrieved quickly
+    for user_id, original_user in users:
+        retrieved = mongo_session.get(User, user_id)
+        assert retrieved is original_user
+
+
+def test_scenario_identity_map_string_id_handling(
+    mongo_session,
+):
+    """Scenario: Identity map handles string IDs correctly"""
+    # ObjectId as object
+    object_id = ObjectId("507f1f77bcf86cd799439011")
+    user1 = User(_id=object_id, name="Alice")
+
+    mongo_session.add(user1)
+
+    # Get by string ID
+    retrieved = mongo_session.get(User, "507f1f77bcf86cd799439011")
+    assert retrieved is user1
+
+    # Get by ObjectId also works (converted to string internally)
+    retrieved2 = mongo_session.get(User, str(object_id))
+    assert retrieved2 is user1
 
 
 if __name__ == "__main__":
