@@ -131,7 +131,6 @@ class InfrastructureProvider(Provider):
             database=database,
             retort=Retort(
                 recipe=[
-                    # name_mapping(P[Any], map={"_private": "_private"}),
                     loader(
                         P._id,  # noqa: SLF001
                         lambda x: str(x) if isinstance(x, ObjectId) else x,

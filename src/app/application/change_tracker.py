@@ -94,7 +94,8 @@ class InvalidRequestError(ChangeTrackerError):
     @property
     def message(self) -> str:
         return (
-            f"Can't attach {self.entity_type.__name__} with id={self.entity_id}: "
+            f"Can't attach {self.entity_type.__name__} "
+            f"with id={self.entity_id}: "
             f"another instance with the same id is already tracked"
         )
 

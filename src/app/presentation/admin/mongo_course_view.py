@@ -85,7 +85,9 @@ class MongoCourseView(GenericMongoView[Course]):
         TagsField(
             name="tags",
             label="Теги",
-            help_text="Введите теги через запятую (например: python, backend, fastapi)",
+            help_text=(
+                "Введите теги через запятую (напр.: python, backend, fastapi)"
+            ),
         ),
         LessonsListField(
             field=CollectionField(

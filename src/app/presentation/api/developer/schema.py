@@ -72,11 +72,6 @@ class CreateDeveloperRequestSchema(BaseModel):
     )
 
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
-
-
 class AddressSchema(BaseModel):
     """Nested model for address"""
 
@@ -180,13 +175,43 @@ class UpdateDeveloperRequestSchema(BaseModel):
         },
     )
 
-    username: str | None = Field(None, description="Unique username")
-    full_name: str | None = Field(None, description="Full name of developer")
-    city: str | None = Field(None, description="City name")
-    country: str | None = Field(None, description="Country name")
-    coordinates: dict[str, float] | None = Field(None, description="GPS coordinates")
-    languages: list[str] | None = Field(None, description="Programming languages")
-    tags: set[str] | None = Field(None, description="Developer tags")
-    skills: list[dict[str, Any]] | None = Field(None, description="List of skills")
-    projects: list[dict[str, Any]] | None = Field(None, description="List of projects")
-    metadata: dict[str, Any] | None = Field(None, description="Additional metadata")
+    username: str | None = Field(
+        None,
+        description="Unique username",
+    )
+    full_name: str | None = Field(
+        None,
+        description="Full name of developer",
+    )
+    city: str | None = Field(
+        None,
+        description="City name",
+    )
+    country: str | None = Field(
+        None,
+        description="Country name",
+    )
+    coordinates: dict[str, float] | None = Field(
+        None,
+        description="GPS coordinates",
+    )
+    languages: list[str] | None = Field(
+        None,
+        description="Programming languages",
+    )
+    tags: set[str] | None = Field(
+        None,
+        description="Developer tags",
+    )
+    skills: list[dict[str, Any]] | None = Field(
+        None,
+        description="List of skills",
+    )
+    projects: list[dict[str, Any]] | None = Field(
+        None,
+        description="List of projects",
+    )
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description="Additional metadata",
+    )

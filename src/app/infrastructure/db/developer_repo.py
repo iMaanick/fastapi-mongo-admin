@@ -43,8 +43,7 @@ class MongoDeveloperRepository(DeveloperRepository):
             logger.info("Developer not found: %s", developer_id)
             return None
 
-        developer = self.mongo_session.load(Developer, developer_doc)
-        return developer
+        return self.mongo_session.load(Developer, developer_doc)
 
     async def get_all(
         self,
@@ -70,7 +69,11 @@ class MongoDeveloperRepository(DeveloperRepository):
         developer_docs = await cursor.to_list(length=None)
         developers = self.mongo_session.load_all(Developer, developer_docs)
 
-        logger.info("Loaded %s developers with filter: %s", len(developers), query)
+        logger.info(
+            "Loaded %s developers with filter: %s",
+            len(developers),
+            query,
+        )
         return developers
 
     async def delete(self, developer_id: str) -> None:
@@ -78,7 +81,10 @@ class MongoDeveloperRepository(DeveloperRepository):
         developer = await self.get_by_id(developer_id)
 
         if developer is None:
-            logger.warning("Developer not found for deletion: %s", developer_id)
+            logger.warning(
+                "Developer not found for deletion: %s",
+                developer_id,
+            )
             return
 
         self.mongo_session.delete(developer)

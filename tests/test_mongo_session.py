@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from adaptix import Retort, loader, P
+from adaptix import P, Retort, loader
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorDatabase
 
@@ -15,10 +15,10 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
-    InvalidRequestError, OriginalSnapshotNotFoundError,
+    InvalidRequestError,
+    OriginalSnapshotNotFoundError,
 )
 from app.infrastructure.trackers.mongo_session import MongoSession
-
 
 # ============= Test Models =============
 
@@ -64,9 +64,8 @@ def retort():
     """Create Retort instance"""
     return Retort(
         recipe=[
-            # name_mapping(P[Any], map={"_private": "_private"}),
             loader(
-                P._id,  # noqa: SLF001
+                P._id,
                 lambda x: str(x) if isinstance(x, ObjectId) else x,
             ),
         ],
@@ -1264,7 +1263,9 @@ async def test_flush_order_inserts_updates_deletes(
     mock_database,
     valid_object_id,
 ):
-    """Test flush executes operations in correct order: insert -> update -> delete"""
+    """
+    Test flush executes operations in correct order: insert -> update -> delete
+    """
     # New entity (insert)
     new_user = User(name="New User")
 
@@ -1316,7 +1317,10 @@ async def test_scenario_delete_tracked_entity(
     mock_database,
     valid_object_id,
 ):
-    """Scenario: Track entity, modify it, then delete (should update then delete)"""
+    """
+    Scenario: Track entity, modify it, then delete (should update then delete)
+    """
+
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", age=25)
 
@@ -3510,11 +3514,14 @@ def test_add_different_instance_same_id_raises_error(
     mongo_session,
     valid_object_id,
 ):
-    """Test adding different instance with same ID raises InvalidRequestError"""
+    """
+    Test adding different instance with same ID raises InvalidRequestError
+    """
     user_id = valid_object_id()
 
+    # Different instance, same ID
     user1 = User(_id=user_id, name="Alice", age=25)
-    user2 = User(_id=user_id, name="Bob", age=30)  # Different instance, same ID
+    user2 = User(_id=user_id, name="Bob", age=30)
 
     mongo_session.add(user1)
 
@@ -4057,7 +4064,7 @@ def test_load_all_single_entity(
             "age": 25,
             "tags": [],
             "metadata": {},
-        }
+        },
     ]
 
     users = mongo_session.load_all(User, docs)
@@ -4233,7 +4240,7 @@ def test_load_all_unmapped_entity_type_raises_error(
         {
             "_id": ObjectId(valid_object_id()),
             "name": "Test",
-        }
+        },
     ]
 
     with pytest.raises(CollectionMappingNotFoundError):
@@ -4251,7 +4258,7 @@ def test_load_all_with_invalid_document_raises_error(
             "age": 25,
             "tags": [],
             "metadata": {},
-        }
+        },
     ]
 
     with pytest.raises(InvalidEntityIdError):
@@ -4297,7 +4304,7 @@ def test_load_all_stops_on_first_error(
     assert len(mongo_session._tracked_entities.get(User, {})) == 1
 
 
-# ============= Integration Tests: load() and load_all() scenarios =============
+# ============= Integration Tests: load() and load_all() scenarios ============
 
 
 @pytest.mark.asyncio
@@ -4348,7 +4355,10 @@ async def test_scenario_load_all_mixed_operations(
     mock_database,
     valid_object_id,
 ):
-    """Scenario: Load multiple entities, some exist, some new, modify and flush"""
+    """
+    Scenario: Load multiple entities, some exist,
+    some new, modify and flush
+    """
     user_ids = [valid_object_id() for _ in range(3)]
 
     # Pre-existing entity (modified)
@@ -4487,20 +4497,25 @@ def test_scenario_bulk_load_performance(
     assert len(users) == 100
 
     # All should be in identity map
-    for user_id, user in zip(user_ids, users):
+    for user_id, user in zip(user_ids, users, strict=True):
         assert mongo_session.get(User, user_id) is user
 
 
 @pytest.mark.asyncio
-async def test_flush_raises_original_snapshot_not_found(mongo_session, valid_object_id):
-    """Test flush raises OriginalSnapshotNotFoundError при отсутствии snapshot"""
+async def test_flush_raises_original_snapshot_not_found(
+    mongo_session,
+    valid_object_id,
+):
+    """T
+    est flush raises OriginalSnapshotNotFoundError
+    при отсутствии snapshot
+    """
     mongo_session.collection_mapping[User] = "users"
     user_id = valid_object_id()
     user = User(_id=user_id, name="Alice", age=25)
 
     mongo_session._tracked_entities[User] = {user_id: user}
     mongo_session._original_snapshots[User] = {}
-
 
     with pytest.raises(OriginalSnapshotNotFoundError) as exc_info:
         await mongo_session.flush()

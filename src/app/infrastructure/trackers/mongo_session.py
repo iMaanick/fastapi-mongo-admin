@@ -14,7 +14,8 @@ from app.application.change_tracker import (
     EntityMissingIdError,
     EntityNotDataclassError,
     InvalidEntityIdError,
-    InvalidRequestError, OriginalSnapshotNotFoundError,
+    InvalidRequestError,
+    OriginalSnapshotNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ class MongoSession:
         init=False,
     )
 
-    def add(self, entity: T) -> None:
+    def add(self, entity: T) -> None:  # noqa: C901
         """Track a single entity for change detection"""
         if not is_dataclass(entity):
             raise EntityNotDataclassError(type(entity))
@@ -145,7 +146,10 @@ class MongoSession:
         )
 
     async def flush(self) -> None:
-        """Execute pending operations (inserts and updates) without committing transaction"""
+        """
+        Execute pending operations (inserts and updates)
+        without committing transaction
+        """
         if (
             not self._tracked_entities
             and not self._pending_inserts
@@ -283,7 +287,9 @@ class MongoSession:
             current_dump = self.retort.dump(entity)
             current_dump.pop("_id", None)
 
-            original_dump = self._original_snapshots[entity_type].get(entity_id)
+            original_dump = self._original_snapshots[entity_type].get(
+                entity_id,
+            )
 
             if original_dump is None:
                 logger.warning(
@@ -297,7 +303,10 @@ class MongoSession:
                 )
 
             # Compare top-level keys only
-            update_fields = self._get_changed_fields(original_dump, current_dump)
+            update_fields = self._get_changed_fields(
+                original_dump,
+                current_dump,
+            )
 
             if not update_fields:
                 logger.debug(
@@ -329,7 +338,8 @@ class MongoSession:
     ) -> dict[str, Any]:
         """
         Compare top-level keys of two dumps and return changed fields.
-        This works correctly because MongoDB can update entire nested structures.
+        This works correctly because MongoDB
+        can update entire nested structures.
         """
         update_fields = {}
 
@@ -397,7 +407,9 @@ class MongoSession:
 
         # Check if already in identity map BEFORE loading
         if entity_type in self._tracked_entities:
-            existing = self._tracked_entities[entity_type].get(entity_id)
+            existing: T | None = self._tracked_entities[entity_type].get(
+                entity_id,
+            )
             if existing is not None:
                 logger.debug(
                     "Returning existing %s:%s from identity map",
@@ -418,13 +430,19 @@ class MongoSession:
         )
         return entity
 
-    def load_all(self, entity_type: type[T], docs: list[dict[str, Any]]) -> list[T]:
+    def load_all(
+        self,
+        entity_type: type[T],
+        docs: list[dict[str, Any]],
+    ) -> list[T]:
         """
         Load multiple entities from MongoDB documents.
-        For each entity, if it already exists in identity map, uses tracked instance.
+        For each entity, if it already exists in identity map,
+        uses tracked instance.
         Otherwise loads new entity and adds to identity map.
 
-        Returns list where some entities may be from identity map (if already tracked).
+        Returns list where some entities
+        may be from identity map (if already tracked).
         """
         if entity_type not in self.collection_mapping:
             raise CollectionMappingNotFoundError(entity_type)

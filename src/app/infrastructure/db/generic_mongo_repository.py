@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 from adaptix import Retort
 from bson import ObjectId
@@ -17,7 +17,7 @@ T = TypeVar("T")
 
 
 @dataclass(slots=True, frozen=True)
-class GenericMongoRepository(Generic[T]):
+class GenericMongoRepository[T]:
     """Generic repository для работы с MongoDB"""
 
     client: AsyncIOMotorClient[dict[str, Any]]
@@ -99,7 +99,7 @@ class GenericMongoRepository(Generic[T]):
             cursor = cursor.limit(limit)
 
         docs = await cursor.to_list(length=None)
-        entities = self.retort.load(docs, list[self.model_type])
+        entities: list[T] = self.retort.load(docs, list[self.model_type])  # type: ignore[name-defined]
 
         logger.info(
             "Loaded %s %s with filter: %s",

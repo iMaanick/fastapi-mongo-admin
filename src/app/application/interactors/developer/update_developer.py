@@ -29,7 +29,7 @@ class UpdateDeveloperInteractor:
     developer_repository: DeveloperRepository
     session: MongoSession
 
-    async def __call__(
+    async def __call__(  # noqa: PLR0912, C901
         self,
         request_data: UpdateDeveloperRequest,
     ) -> Developer | None:
@@ -52,7 +52,13 @@ class UpdateDeveloperInteractor:
             developer.full_name = request_data.full_name
 
         # Update address
-        if any([request_data.city, request_data.country, request_data.coordinates]):
+        if any(
+            [
+                request_data.city,
+                request_data.country,
+                request_data.coordinates,
+            ],
+        ):
             if developer.address is None:
                 developer.address = Address(
                     city=request_data.city or "",
@@ -95,7 +101,7 @@ class UpdateDeveloperInteractor:
         logger.info(
             "Developer updated: %s (ID: %s)",
             developer.username,
-            developer._id,
+            developer._id,  # noqa: SLF001
         )
 
         return developer

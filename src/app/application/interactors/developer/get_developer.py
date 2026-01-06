@@ -33,7 +33,7 @@ class GetDeveloperInteractor:
         logger.info(
             "Developer retrieved: %s (ID: %s)",
             developer.username,
-            developer._id,
+            developer._id,  # noqa: SLF001
         )
 
         return developer

@@ -1,6 +1,5 @@
 import logging
 from dataclasses import dataclass, field
-from pprint import pprint
 from typing import Any
 
 from app.application.developer_repo import DeveloperRepository
@@ -70,7 +69,8 @@ class CreateDeveloperInteractor:
         await self.session.commit()
 
         logger.info(
-            "Developer created: %s with ID: %s", developer.username, developer._id,
+            "Developer created: %s with ID: %s",
+            developer.username,
+            developer._id,  # noqa: SLF001
         )
-        pprint(developer)
         return developer

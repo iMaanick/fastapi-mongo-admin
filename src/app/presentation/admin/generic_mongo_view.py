@@ -1,13 +1,13 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pprint import pprint
-from typing import Any, Generic, TypeVar
+from typing import Any, TypeVar
 
 from adaptix import Retort
 from adaptix.load_error import AggregateLoadError, ValidationLoadError
 from adaptix.struct_trail import get_trail
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorClientSession
 from starlette.requests import Request
 from starlette_admin import BaseModelView
 from starlette_admin.exceptions import FormValidationError
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class GenericMongoView(BaseModelView, Generic[T]):
+class GenericMongoView[T](BaseModelView):
     """Generic админка для MongoDB моделей"""
 
     model_type: type[T]
@@ -31,9 +31,9 @@ class GenericMongoView(BaseModelView, Generic[T]):
     database_name: str
 
     def __init__(
-            self,
-            client: AsyncIOMotorClient[dict[str, Any]],
-            retort: Retort,
+        self,
+        client: AsyncIOMotorClient[dict[str, Any]],
+        retort: Retort,
     ):
         super().__init__()
         self.client = client
@@ -47,33 +47,33 @@ class GenericMongoView(BaseModelView, Generic[T]):
         )
 
     @asynccontextmanager
-    async def _transaction(self):
+    async def _transaction(self) -> AsyncIterator[AsyncIOMotorClientSession]:
         """Context manager для транзакций"""
-        async with await self.client.start_session() as session:
-            async with session.start_transaction():
-                try:
-                    yield session
-                    await session.commit_transaction()
-                    logger.debug("Transaction committed")
-                except Exception:
-                    logger.exception("Transaction failed, rolling back")
-                    if session.in_transaction:
-                        await session.abort_transaction()
-                    raise
+        async with (
+            await self.client.start_session() as session,
+            session.start_transaction(),
+        ):
+            try:
+                yield session
+            except Exception:
+                logger.exception("Transaction failed, rolling back")
+                if session.in_transaction:  # type: ignore[truthy-function]
+                    await session.abort_transaction()
+                raise
 
     def _normalize_form_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """
         Нормализовать данные формы для adaptix.
         """
-        normalized = {}
+        normalized: dict[str, Any] = {}
 
         for key, value in data.items():
             if isinstance(value, dict) and value:
-                all_keys_numeric = all(k.isdigit() for k in value.keys())
+                all_keys_numeric = all(k.isdigit() for k in value)
 
                 if all_keys_numeric:
                     try:
-                        int_keys = {int(k): k for k in value.keys()}
+                        int_keys = {int(k): k for k in value}
                         sorted_indices = sorted(int_keys.keys())
 
                         if sorted_indices == list(range(len(sorted_indices))):
@@ -89,7 +89,7 @@ class GenericMongoView(BaseModelView, Generic[T]):
                             normalized[key] = value
                     except (ValueError, TypeError):
                         normalized[key] = value
-                elif all(isinstance(k, str) for k in value.keys()):
+                elif all(isinstance(k, str) for k in value):
                     normalized[key] = [value]
                     logger.debug(
                         "Wrapped single object '%s' into list",
@@ -103,15 +103,16 @@ class GenericMongoView(BaseModelView, Generic[T]):
         return normalized
 
     def _convert_adaptix_errors_to_form_errors(
-            self, exc: AggregateLoadError,
-    ) -> dict[str, str]:
+        self,
+        exc: AggregateLoadError,
+    ) -> dict[str | int, Any]:
         """
         Преобразовать ошибки adaptix в формат starlette-admin.
 
         Returns:
             dict[field_name, error_message]
         """
-        errors = {}
+        errors: dict[str | int, Any] = {}
 
         for error in exc.exceptions:
             # Получаем путь к полю, где произошла ошибка
@@ -126,7 +127,7 @@ class GenericMongoView(BaseModelView, Generic[T]):
 
             # Формируем сообщение об ошибке
             if isinstance(error, ValidationLoadError):
-                error_msg = error.msg
+                error_msg = str(error.msg)
             else:
                 error_msg = str(error)
 
@@ -135,18 +136,18 @@ class GenericMongoView(BaseModelView, Generic[T]):
         return errors
 
     async def find_all(
-            self,
-            request: Request,
-            skip: int = 0,
-            limit: int = 100,
-            where: dict[str, Any] | str | None = None,
-            order_by: list[str] | None = None,
+        self,
+        request: Request,
+        skip: int = 0,
+        limit: int = 100,
+        where: dict[str, Any] | str | None = None,
+        order_by: list[str] | None = None,
     ) -> list[Any]:
         """Получение списка сущностей с фильтрацией и сортировкой"""
         mongo_filter = build_mongo_filter(where)
         sort = self._build_sort(order_by)
 
-        entities = await self._repository.get_all(
+        return await self._repository.get_all(
             filter_query=mongo_filter,
             skip=skip,
             limit=max(0, limit),
@@ -154,12 +155,10 @@ class GenericMongoView(BaseModelView, Generic[T]):
             session=None,
         )
 
-        return entities
-
     async def count(
-            self,
-            request: Request,
-            where: dict[str, Any] | str | None = None,
+        self,
+        request: Request,
+        where: dict[str, Any] | str | None = None,
     ) -> int:
         """Подсчет количества документов с учётом фильтра"""
         mongo_filter = build_mongo_filter(where)
@@ -177,16 +176,15 @@ class GenericMongoView(BaseModelView, Generic[T]):
     async def find_by_pk(self, request: Request, pk: Any) -> Any:
         """Получение сущности по ID"""
         async with await self.client.start_session() as session:
-            entity = await self._repository.get_by_id(
+            return await self._repository.get_by_id(
                 str(pk),
                 session=session,
             )
-            return entity
 
     async def find_by_pks(
-            self,
-            request: Request,
-            pks: list[Any],
+        self,
+        request: Request,
+        pks: list[Any],
     ) -> list[Any]:
         """Получение сущностей по списку ID"""
         if not pks:
@@ -195,14 +193,13 @@ class GenericMongoView(BaseModelView, Generic[T]):
         object_ids = [ObjectId(str(pk)) for pk in pks]
 
         async with await self.client.start_session() as session:
-            entities = await self._repository.get_all(
+            return await self._repository.get_all(
                 filter_query={"_id": {"$in": object_ids}},
                 skip=0,
                 limit=0,
                 sort=None,
                 session=session,
             )
-            return entities
 
     async def create(self, request: Request, data: dict[str, Any]) -> Any:
         """Создание сущности"""
@@ -214,20 +211,20 @@ class GenericMongoView(BaseModelView, Generic[T]):
             except AggregateLoadError as e:
                 # Преобразуем ошибки adaptix в формат starlette-admin
                 errors = self._convert_adaptix_errors_to_form_errors(e)
-                raise FormValidationError(errors)
+                raise FormValidationError(errors) from e
 
             await self._repository.add(entity, session)
+            await session.commit_transaction()
             logger.info("✅ Created %s successfully", self.model_type.__name__)
             return entity
 
     async def edit(
-            self,
-            request: Request,
-            pk: Any,
-            data: dict[str, Any],
+        self,
+        request: Request,
+        pk: Any,
+        data: dict[str, Any],
     ) -> Any:
         """Редактирование сущности"""
-        pprint(data)
         async with self._transaction() as session:
             existing = await self._repository.get_by_id(str(pk), session)
             if existing is None:
@@ -241,12 +238,16 @@ class GenericMongoView(BaseModelView, Generic[T]):
             normalized_data["_id"] = str(pk)
 
             try:
-                updated_entity = self.retort.load(normalized_data, self.model_type)
+                updated_entity = self.retort.load(
+                    normalized_data,
+                    self.model_type,
+                )
             except AggregateLoadError as e:
                 errors = self._convert_adaptix_errors_to_form_errors(e)
-                raise FormValidationError(errors)
+                raise FormValidationError(errors) from e
 
             await self._repository.update(str(pk), updated_entity, session)
+            await session.commit_transaction()
             logger.info("✅ Updated %s: %s", self.model_type.__name__, pk)
             return updated_entity
 
@@ -258,7 +259,7 @@ class GenericMongoView(BaseModelView, Generic[T]):
                 success = await self._repository.delete(str(pk), session)
                 if success:
                     deleted += 1
-
+            await session.commit_transaction()
             logger.info(
                 "✅ Deleted %s %s out of %s",
                 deleted,
@@ -269,7 +270,7 @@ class GenericMongoView(BaseModelView, Generic[T]):
 
     @staticmethod
     def _build_sort(
-            order_by: list[str] | None,
+        order_by: list[str] | None,
     ) -> list[tuple[str, int]] | None:
         """Построить sort для MongoDB из order_by"""
         if not order_by:
