@@ -34,16 +34,17 @@ class MongoDeveloperRepository(DeveloperRepository):
     async def get_by_id(self, developer_id: str) -> Developer | None:
         object_id = ObjectId(developer_id)
 
-        developer_doc = await self.collection.find_one(
+        developer = await self.mongo_session.find_one(
+            Developer,
+            self.collection,
             {"_id": object_id},
-            session=self.session,
         )
 
-        if not developer_doc:
+        if not developer:
             logger.info("Developer not found: %s", developer_id)
             return None
 
-        return self.mongo_session.load(Developer, developer_doc)
+        return developer
 
     async def get_all(
         self,
@@ -66,8 +67,7 @@ class MongoDeveloperRepository(DeveloperRepository):
         if limit > 0:
             cursor = cursor.limit(limit)
 
-        developer_docs = await cursor.to_list(length=None)
-        developers = self.mongo_session.load_all(Developer, developer_docs)
+        developers = await self.mongo_session.find_all(Developer, cursor, length=None)
 
         logger.info(
             "Loaded %s developers with filter: %s",
