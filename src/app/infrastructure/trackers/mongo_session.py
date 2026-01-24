@@ -1,12 +1,19 @@
 import copy
 import logging
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass, field, is_dataclass
 from typing import Any, TypeVar
 
 from adaptix import Retort
 from bson import ObjectId
 from bson.errors import InvalidId
-from motor.motor_asyncio import AsyncIOMotorClientSession, AsyncIOMotorDatabase
+from motor.motor_asyncio import (
+    AsyncIOMotorClientSession,
+    AsyncIOMotorCollection,
+    AsyncIOMotorCommandCursor,
+    AsyncIOMotorCursor,
+    AsyncIOMotorDatabase,
+)
 
 from app.application.change_tracker import (
     ChangeTrackerError,
@@ -460,3 +467,61 @@ class MongoSession:
         )
 
         return result
+
+    async def find_one(
+        self,
+        entity_type: type[T],
+        collection: AsyncIOMotorCollection[dict[str, Any]],
+        filter: Mapping[str, Any] | None = None,  # noqa: A002
+        **kwargs: Any,
+    ) -> T | None:
+        """
+        Execute find_one on collection and load entity.
+        """
+        doc = await collection.find_one(
+            filter,
+            session=self.session,
+            **kwargs,
+        )
+
+        if doc is None:
+            return None
+
+        return self.load(entity_type, doc)
+
+    async def find_all(
+        self,
+        entity_type: type[T],
+        cursor: AsyncIOMotorCursor[dict[str, Any]],
+        length: int | None = None,
+    ) -> list[T]:
+        """
+        Execute to_list on cursor and load all entities.
+        """
+        docs = await cursor.to_list(length)
+        return self.load_all(entity_type, docs)
+
+    async def exec_iter(
+        self,
+        entity_type: type[T],
+        cursor: AsyncIOMotorCursor[dict[str, Any]],
+    ) -> AsyncGenerator[T, None]:
+        """
+        Iterate cursor and yield tracked entities.
+        """
+        async for doc in cursor:
+            yield self.load(entity_type, doc)
+
+    async def aggregate_one(
+        self,
+        entity_type: type[T],
+        cursor: AsyncIOMotorCommandCursor[dict[str, Any]],
+    ) -> T | None:
+        """
+        Get first result from aggregation pipeline and load entity.
+        """
+        try:
+            doc = await cursor.next()
+            return self.load(entity_type, doc)
+        except StopAsyncIteration:
+            return None
