@@ -67,7 +67,11 @@ class MongoDeveloperRepository(DeveloperRepository):
         if limit > 0:
             cursor = cursor.limit(limit)
 
-        developers = await self.mongo_session.find_all(Developer, cursor, length=None)
+        developers = await self.mongo_session.find_all(
+            Developer,
+            cursor,
+            length=None,
+        )
 
         logger.info(
             "Loaded %s developers with filter: %s",
